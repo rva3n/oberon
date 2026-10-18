@@ -64,7 +64,9 @@ PanelWindow {
     // дважды (сдвиг на толщину), а капсула и так парит над окнами —
     // как pillOverlay=true у Panacea.
     exclusiveZone: 0
-    WlrLayershell.layer: WlrLayer.Top
+    // Overlay: панель/лончер обязаны быть выше полноэкранного клик-фона
+    // (components/Backdrop.qml — Top-слой), иначе клик внутри панели её закрывает.
+    WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-island"
     WlrLayershell.keyboardFocus: (view === "launcher" || view === "panel" || view === "taskman" || view === "tray")
         ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
