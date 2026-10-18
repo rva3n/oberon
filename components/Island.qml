@@ -20,6 +20,8 @@ PanelWindow {
     required property var modelData
     property var shell: null
     property string view: "idle"        // idle | panel | launcher | taskman | tray
+    property bool pillDragging: false
+    property point pillDragCenterOffset: Qt.point(0, 0)
 
     screen: modelData
     color: "transparent"
@@ -157,9 +159,40 @@ PanelWindow {
         && !win.transientHereNow && !win.revealHeld
 
     function openPanelFromPill() {
-        if (!win.shell || win.big || win.mode !== "idle")
+        if (!win.shell || win.big || win.mode !== "idle" || win.pillDragging)
             return;
         win.shell.openPanel();
+    }
+
+    function beginPillDrag(pointerPoint) {
+        const center = pill.mapToGlobal(pill.width / 2, pill.height / 2);
+        win.pillDragCenterOffset = Qt.point(center.x - pointerPoint.x, center.y - pointerPoint.y);
+    }
+
+    function finishPillDrag(pointerPoint) {
+        if (!win.screen)
+            return;
+        const center = Qt.point(pointerPoint.x + win.pillDragCenterOffset.x,
+                                pointerPoint.y + win.pillDragCenterOffset.y);
+        const sx = win.screen.x;
+        const sy = win.screen.y;
+        const sw = win.screen.width;
+        const sh = win.screen.height;
+        const candidates = [];
+        if (center.x <= sx + sw / 4)
+            candidates.push({ pos: "left", distance: Math.abs(center.x - sx) });
+        if (center.x >= sx + sw * 3 / 4)
+            candidates.push({ pos: "right", distance: Math.abs(sx + sw - center.x) });
+        if (center.y <= sy + sh / 4)
+            candidates.push({ pos: "top", distance: Math.abs(center.y - sy) });
+        if (center.y >= sy + sh * 3 / 4)
+            candidates.push({ pos: "bottom", distance: Math.abs(sy + sh - center.y) });
+        if (candidates.length === 0)
+            return;
+        candidates.sort((a, b) => a.distance - b.distance);
+        const next = candidates[0].pos;
+        if (next !== win.islandPos)
+            Prefs.set("islandPos", next);
     }
 
     property date now: new Date()
@@ -332,7 +365,7 @@ PanelWindow {
             MouseArea {
                 anchors.fill: parent
                 z: -1
-                enabled: !win.big && win.mode === "idle"
+                enabled: !win.big && win.mode === "idle" && !win.pillDragging
                 cursorShape: Qt.PointingHandCursor
                 onClicked: win.openPanelFromPill()
             }
@@ -432,6 +465,7 @@ PanelWindow {
             IconButton {
                 icon: "arrow_back"
                 visible: win.mode === "panel" && win.page !== ""
+                disabled: win.pillDragging
                 onClicked: if (win.shell) win.shell.setPage("")
             }
             ColumnLayout {
@@ -462,15 +496,65 @@ PanelWindow {
                 text: "Трей"
             }
             Item { Layout.fillWidth: true }
+            Item {
+                id: dragHandle
+                visible: Prefs.islandDrag && (win.mode === "panel" || win.mode === "tray")
+                Layout.preferredWidth: Theme.dp(40)
+                Layout.preferredHeight: Theme.dp(40)
+                implicitWidth: Theme.dp(40)
+                implicitHeight: Theme.dp(40)
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusPill
+                    color: dragHandleHover.hovered ? Theme.bgTile : "transparent"
+                }
+
+                Icon {
+                    anchors.centerIn: parent
+                    name: "drag_indicator"
+                    size: Theme.dp(20)
+                    color: dragHandleHover.hovered ? Theme.text : Theme.subtext
+                }
+
+                HoverHandler {
+                    id: dragHandleHover
+                    enabled: dragHandle.visible
+                }
+
+                DragHandler {
+                    id: islandDragHandler
+                    enabled: dragHandle.visible
+                    target: null
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    property point globalPoint: Qt.point(0, 0)
+
+                    onActiveChanged: {
+                        if (active) {
+                            globalPoint = dragHandle.mapToGlobal(centroid.position);
+                            win.beginPillDrag(globalPoint);
+                            win.pillDragging = true;
+                        } else if (win.pillDragging) {
+                            if (Prefs.islandDrag)
+                                win.finishPillDrag(globalPoint);
+                            win.pillDragging = false;
+                        }
+                    }
+                    onTranslationChanged: if (active)
+                        globalPoint = dragHandle.mapToGlobal(centroid.position)
+                }
+            }
             IconButton {
                 visible: win.mode === "panel" && win.page === ""
                 icon: "settings"
+                disabled: win.pillDragging
                 onClicked: if (win.shell) win.shell.setPage(win.page === "settings" ? "" : "settings")
             }
             IconButton {
                 visible: win.mode === "panel"
                 icon: "power_settings_new"
                 variant: "tonal"
+                disabled: win.pillDragging
                 onClicked: if (win.shell) win.shell.setPage(win.page === "power" ? "" : "power")
             }
         }
@@ -483,6 +567,7 @@ PanelWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: Theme.dp(16) + panelFace.headerSpace
+            enabled: !win.pillDragging
             contentWidth: width
             contentHeight: contentCol.implicitHeight
             clip: true

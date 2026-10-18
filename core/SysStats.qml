@@ -35,6 +35,7 @@ Singleton {
 
     // ── GPU (amdgpu / drm / hwmon) ────────────────────────────────────
     property real gpuBusy: 0      // 0..1
+    property bool gpuLoadAvailable: false
     property real vramUsed: 0     // байты
     property real vramTotal: 0
     property real gpuTempC: -1
@@ -143,6 +144,7 @@ Singleton {
     // Вне диспетчера метрики нужны системному desktop-виджету.
     readonly property bool active: s.taskmanActive
         || (Prefs.widgetsEnabled && WidgetsStore.ready && WidgetsStore.isEnabled("system"))
+        || Prefs.systemLoadOnIsland
 
     // ── Форматирование ────────────────────────────────────────────────
     function formatBytes(bytes) {
@@ -292,6 +294,7 @@ Singleton {
             s.tempC = t > 1000 ? t / 1000 : (t > 0 ? t : -1);
         } else if (line.startsWith("GPUB ")) {
             s.gpuBusy = Math.max(0, Math.min(1, (+line.slice(5)) / 100));
+            s.gpuLoadAvailable = true;
         } else if (line.startsWith("VRAM ")) {
             const p = line.split(/\s+/);
             s.vramUsed = +p[1] || 0;
@@ -550,7 +553,7 @@ Singleton {
             "echo \"HOST $(uname -n 2>/dev/null)\"; " +
             "echo \"KERN $(uname -r 2>/dev/null)\"; " +
             "T=$(for z in /sys/class/thermal/thermal_zone*/temp; do [ -r \"$z\" ] && cat \"$z\" && break; done); echo \"TZ ${T:-0}\"; " +
-            "B=$(for f in /sys/class/drm/card[0-9]*/device/gpu_busy_percent; do [ -r \"$f\" ] && cat \"$f\" && break; done); echo \"GPUB ${B:-0}\"; " +
+            "B=$(for f in /sys/class/drm/card[0-9]*/device/gpu_busy_percent; do [ -r \"$f\" ] && cat \"$f\" && break; done); [ -n \"$B\" ] && echo \"GPUB $B\"; " +
             "V=$(for f in /sys/class/drm/card[0-9]*/device/mem_info_vram_used; do [ -r \"$f\" ] && cat \"$f\" && break; done); " +
             "V2=$(for f in /sys/class/drm/card[0-9]*/device/mem_info_vram_total; do [ -r \"$f\" ] && cat \"$f\" && break; done); echo \"VRAM ${V:-0} ${V2:-0}\"; " +
             "GT=$(for f in /sys/class/drm/card[0-9]*/device/hwmon/hwmon*/temp1_input; do [ -r \"$f\" ] && cat \"$f\" && break; done); echo \"GTEMP ${GT:-0}\"; " +
@@ -629,6 +632,7 @@ Singleton {
             s._tempsBuf = [];
             s._coreLoadsBuf = [];
             s._hadStatCpu = false;
+            s.gpuLoadAvailable = false;
             proc.running = true;
         }
     }

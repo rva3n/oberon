@@ -838,6 +838,139 @@ RowLayout {
 
             Card {
                 Layout.fillWidth: true
+                title: "Положение"
+
+                SSelect {
+                    label: "Край экрана"
+                    values: ["top", "bottom", "left", "right"]
+                    labels: ["Сверху", "Снизу", "Слева", "Справа"]
+                    value: Prefs.islandPos
+                    onCommitted: (v) => Prefs.set("islandPos", v)
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                title: "Поведение"
+
+                SToggle {
+                    label: "Автоскрытие"
+                    sub: "Капсула уезжает за край, возвращается при наведении на полоску."
+                    checked: Prefs.islandAutoHide
+                    onToggled: (v) => Prefs.set("islandAutoHide", v)
+                }
+                SToggle {
+                    label: "Переносить капсулу мышью между краями"
+                    checked: Prefs.islandDrag
+                    onToggled: (v) => Prefs.set("islandDrag", v)
+                }
+                SToggle {
+                    label: "Загрузка CPU/GPU в свёрнутой капсуле"
+                    checked: Prefs.systemLoadOnIsland
+                    onToggled: (v) => Prefs.set("systemLoadOnIsland", v)
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                title: "Форма"
+
+                SToggle {
+                    label: "Режим выреза"
+                    sub: "Вогнутые уголки у кромки."
+                    checked: Prefs.notchMode
+                    onToggled: (v) => Prefs.set("notchMode", v)
+                }
+                SSlider {
+                    label: "Размер уголков"
+                    sub: "Виден в режиме выреза."
+                    from: 0
+                    to: 32
+                    step: 1
+                    value: Prefs.notchFlare
+                    valueText: (v) => Math.round(v) + " dp"
+                    enabled: Prefs.notchMode
+                    onCommitted: (v) => Prefs.set("notchFlare", Math.round(v))
+                }
+                SSlider {
+                    label: "Отступ от края"
+                    sub: "Используется у плавающей капсулы."
+                    from: 0
+                    to: 48
+                    step: 1
+                    value: Prefs.islandGap
+                    valueText: (v) => Math.round(v) + " dp"
+                    enabled: !Prefs.notchMode
+                    onCommitted: (v) => Prefs.set("islandGap", Math.round(v))
+                }
+                SSlider {
+                    label: "Скругление"
+                    sub: "0 — радиус по высоте капсулы."
+                    from: 0
+                    to: 40
+                    step: 1
+                    value: Prefs.islandRadius
+                    valueText: (v) => Math.round(v) === 0 ? "По высоте" : Math.round(v) + " dp"
+                    onCommitted: (v) => Prefs.set("islandRadius", Math.round(v))
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
+                title: "Размеры"
+
+                SSlider {
+                    label: "Высота капсулы"
+                    from: 24
+                    to: 72
+                    step: 1
+                    value: Prefs.islandHeight
+                    valueText: (v) => Math.round(v) + " dp"
+                    onCommitted: (v) => Prefs.set("islandHeight", Math.round(v))
+                }
+                SSlider {
+                    label: "Минимальная ширина"
+                    sub: "0 — без нижней границы; иначе 120–640 dp, шаг 4."
+                    from: 0
+                    to: 131
+                    step: 1
+                    value: Prefs.islandWidth <= 0 ? 0
+                        : 1 + Math.round((Math.max(120, Math.min(640, Prefs.islandWidth)) - 120) / 4)
+                    valueText: (v) => v < 0.5 ? "Без нижней границы"
+                        : (120 + (Math.round(v) - 1) * 4) + " dp"
+                    onCommitted: (v) => Prefs.set("islandWidth",
+                        v < 0.5 ? 0 : 120 + (Math.round(v) - 1) * 4)
+                }
+                SSlider {
+                    label: "Ширина раскрытой панели"
+                    sub: "0 — по странице; иначе 380–900 dp, шаг 10."
+                    from: 0
+                    to: 53
+                    step: 1
+                    value: Prefs.islandExpandedWidth <= 0 ? 0
+                        : 1 + Math.round((Math.max(380, Math.min(900, Prefs.islandExpandedWidth)) - 380) / 10)
+                    valueText: (v) => v < 0.5 ? "По странице"
+                        : (380 + (Math.round(v) - 1) * 10) + " dp"
+                    onCommitted: (v) => Prefs.set("islandExpandedWidth",
+                        v < 0.5 ? 0 : 380 + (Math.round(v) - 1) * 10)
+                }
+                SSlider {
+                    label: "Высота раскрытой панели"
+                    sub: "0 — автоматически; иначе 260–1000 dp, шаг 10."
+                    from: 0
+                    to: 75
+                    step: 1
+                    value: Prefs.islandExpandedHeight <= 0 ? 0
+                        : 1 + Math.round((Math.max(260, Math.min(1000, Prefs.islandExpandedHeight)) - 260) / 10)
+                    valueText: (v) => v < 0.5 ? "Авто"
+                        : (260 + (Math.round(v) - 1) * 10) + " dp"
+                    onCommitted: (v) => Prefs.set("islandExpandedHeight",
+                        v < 0.5 ? 0 : 260 + (Math.round(v) - 1) * 10)
+                }
+            }
+
+            Card {
+                Layout.fillWidth: true
 
                 ToggleRow {
                     label: "Показывать раскладку клавиатуры"
@@ -875,22 +1008,6 @@ RowLayout {
                     checked: Prefs.islandAllScreens
                     onToggled: (v) => Prefs.set("islandAllScreens", v)
                 }
-            }
-
-
-            Card { // форма капсулы
-                Layout.fillWidth: true
-                title: "Форма капсулы"
-
-                ChoiceRow {
-                    label: "Стиль островка"
-                    values: ["island", "notch"]
-                    labels: ["Плавающий", "Выемка"]
-                    value: Prefs.barStyle
-                    sub: "Плавающая капсула или прижатая к верхней кромке выемка (notch)."
-                    onCommitted: (v) => Prefs.set("barStyle", v)
-                }
-
             }
 
             Card { // порядок чипов (islandOrder: kb/weather/ws/clock/tray)

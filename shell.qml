@@ -364,6 +364,7 @@ ShellRoot {
                 root.openLauncher("packages");
         }
         function pageSettings() { root.view = "panel"; root.panelPage = "settings"; }
+        function pageSettingsAt(sec: string) { root.setPage("settings", sec); }
         function weatherRefresh() { Weather.refresh(); }
         function wallpapers() { root.togglePage("wallpapers"); }
         function clipboard() {

@@ -50,6 +50,11 @@ Item {
     readonly property var goInfo: GoUsage.chipOut(Prefs.goChipMode)
     readonly property bool goWarn: Boolean(goInfo && goInfo.warn)
     readonly property bool goIsError: Boolean(goInfo && goInfo.tone === "error")
+    readonly property string systemLoadLabel: SysStats.gpuLoadAvailable
+        ? "C " + SysStats.cpuPercent + " G " + SysStats.gpuUsage
+        : "C " + SysStats.cpuPercent + "%"
+    readonly property string systemLoadTip: "Загрузка CPU: " + SysStats.cpuPercent + "%"
+        + (SysStats.gpuLoadAvailable ? " · GPU: " + SysStats.gpuUsage + "%" : "")
     readonly property string mediaArt: holder.player ? String(holder.player.trackArtUrl || "") : ""
     readonly property string mediaTitle: holder.player ? String(holder.player.trackTitle || "") : ""
     readonly property int batteryPercent: {
@@ -108,6 +113,16 @@ Item {
         }
         for (const id of allowed)
             if (!out.includes(id)) out.push(id);
+        return out;
+    }
+    readonly property var idleOrder: {
+        const out = holder.order.slice();
+        const clockAt = out.indexOf("clock");
+        const trayAt = out.indexOf("tray");
+        let insertAt = clockAt >= 0 ? clockAt + 1 : (trayAt >= 0 ? trayAt : out.length);
+        if (trayAt >= 0 && clockAt >= trayAt)
+            insertAt = trayAt;
+        out.splice(insertAt, 0, "system");
         return out;
     }
 
@@ -304,6 +319,58 @@ Item {
         }
     }
 
+    Component { id: systemLoadChip
+        Item {
+            id: systemLoadOuter
+            visible: Prefs.systemLoadOnIsland
+            implicitWidth: systemLoadText.implicitWidth + Theme.dp(18)
+            implicitHeight: Theme.dp(24)
+            scale: systemLoadArea.pressed ? 0.96 : 1
+
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Theme.durFastEffects
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.curveFastSpatial
+                }
+            }
+
+            property real grow: systemLoadArea.containsMouse ? Theme.dp(4) : 0
+            Behavior on grow {
+                NumberAnimation {
+                    duration: Theme.durFastEffects
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.curveFastSpatial
+                }
+            }
+
+            Rectangle {
+                x: -systemLoadOuter.grow / 2
+                y: -systemLoadOuter.grow / 2
+                width: parent.width + systemLoadOuter.grow
+                height: parent.height + systemLoadOuter.grow
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: systemLoadArea
+                    radius: parent.radius
+                    onEntered: holder.tip(systemLoadArea, holder.systemLoadTip + " — клик, чтобы открыть диспетчер задач")
+                    onExited: holder.untip(systemLoadArea)
+                    onClicked: if (holder.shell) holder.shell.taskman()
+                }
+            }
+
+            LText {
+                id: systemLoadText
+                anchors.centerIn: parent
+                role: "labelLarge"
+                tabular: true
+                color: Theme.text
+                text: holder.systemLoadLabel
+            }
+        }
+    }
+
     Component { id: goChip
         Item {
             id: goOuter
@@ -397,7 +464,7 @@ Item {
 
         Repeater {
             id: chipRepeater
-            model: holder.order
+            model: holder.idleOrder
 
             delegate: Loader {
                 id: chipLoader
@@ -408,13 +475,16 @@ Item {
                        : chipLoader.modelData === "ws" ? Prefs.islandWorkspaces
                        : chipLoader.modelData === "clock" ? Prefs.islandClock
                        : chipLoader.modelData === "go" ? Prefs.islandGo
+                       : chipLoader.modelData === "system" ? Prefs.systemLoadOnIsland
                        : Prefs.islandTray
+                active: chipLoader.modelData !== "system" || Prefs.systemLoadOnIsland
                 // id Component'ов не свойства — ссылаемся напрямую по id
                 sourceComponent: chipLoader.modelData === "kb" ? kbChip
                                : chipLoader.modelData === "weather" ? weatherChip
                                : chipLoader.modelData === "ws" ? wsChip
                                : chipLoader.modelData === "clock" ? clockChip
                                : chipLoader.modelData === "go" ? goChip
+                               : chipLoader.modelData === "system" ? systemLoadChip
                                : trayChip
             }
         }
@@ -422,7 +492,7 @@ Item {
 
     // У боковой кромки те же источники данных складываются столбиком. Список
     // намеренно компактный: подписи длинных чипов остаются в тултипах.
-    readonly property var verticalOrder: ["media", "clock", "weather", "go", "battery", "kb", "ws", "tray"]
+    readonly property var verticalOrder: ["media", "clock", "weather", "go", "battery", "kb", "ws", "system", "tray"]
 
     Component { id: verticalMediaChip
         Item {
@@ -639,6 +709,45 @@ Item {
         }
     }
 
+    Component { id: verticalSystemLoadChip
+        Item {
+            id: verticalSystemLoad
+            implicitWidth: systemLoadColumn.implicitWidth
+            implicitHeight: systemLoadColumn.implicitHeight
+
+            Column {
+                id: systemLoadColumn
+                anchors.centerIn: parent
+                spacing: -Theme.dp(1)
+
+                LText {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    role: "labelSmall"
+                    tabular: true
+                    color: Theme.text
+                    text: "C " + SysStats.cpuPercent
+                }
+                LText {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: SysStats.gpuLoadAvailable
+                    role: "labelSmall"
+                    tabular: true
+                    color: Theme.subtext
+                    text: "G " + SysStats.gpuUsage
+                }
+            }
+
+            StateLayer {
+                id: verticalSystemLoadArea
+                anchors.fill: parent
+                radius: Theme.radiusSm
+                onEntered: holder.tip(verticalSystemLoadArea, holder.systemLoadTip + " — клик, чтобы открыть диспетчер задач")
+                onExited: holder.untip(verticalSystemLoadArea)
+                onClicked: if (holder.shell) holder.shell.taskman()
+            }
+        }
+    }
+
     Component { id: verticalLayoutChip
         Item {
             implicitWidth: Theme.dp(26)
@@ -746,11 +855,12 @@ Item {
                     && (modelData === "media" ? holder.player !== null
                     : modelData === "clock" ? Prefs.islandClock
                     : modelData === "weather" ? Prefs.islandWeather
-                    : modelData === "go" ? Prefs.islandGo
-                    : modelData === "battery" ? holder.showBattery
-                    : modelData === "kb" ? holder.showLayout
-                    : modelData === "ws" ? Prefs.islandWorkspaces
-                    : Prefs.islandTray && holder.trayItems.length > 0)
+                     : modelData === "go" ? Prefs.islandGo
+                     : modelData === "battery" ? holder.showBattery
+                     : modelData === "kb" ? holder.showLayout
+                     : modelData === "ws" ? Prefs.islandWorkspaces
+                     : modelData === "system" ? Prefs.systemLoadOnIsland
+                     : Prefs.islandTray && holder.trayItems.length > 0)
                 active: chipShown
                 visible: chipShown
                 Layout.alignment: Qt.AlignHCenter
@@ -761,6 +871,7 @@ Item {
                     : modelData === "weather" ? verticalWeatherChip
                     : modelData === "go" ? verticalGoChip
                     : modelData === "battery" ? verticalBatteryChip
+                    : modelData === "system" ? verticalSystemLoadChip
                     : modelData === "kb" ? verticalLayoutChip
                     : modelData === "ws" ? verticalWorkspaceChip
                     : verticalTrayChip
