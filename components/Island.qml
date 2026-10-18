@@ -50,18 +50,29 @@ PanelWindow {
                                  : (win.osdHere && view === "idle") ? "osd" : view
     readonly property bool big: mode === "panel" || mode === "launcher" || mode === "taskman" || mode === "tray"
     readonly property string page: win.shell ? win.shell.panelPage : ""
-    // ширина панели: диспетчер 960, обои 860, настройки/игры/обновления/opencode/пакеты 820,
-    // лончер 680, календарь/погода/таймеры 520, трей 360, остальное 440
+    // Классы размеров капсулы.
+    readonly property var pageSizes: ({
+        wallpapers: "xl",
+        settings: "l",
+        games: "l",
+        updates: "l",
+        opencode: "l",
+        calendar: "m",
+        weather: "m",
+        timers: "m"
+    })
+    readonly property var sizeClasses: ({
+        s: Theme.dp(440),
+        m: Theme.dp(520),
+        l: Theme.dp(820),
+        xl: Theme.dp(860)
+    })
     readonly property int panelW: {
         const rawW = win.view === "taskman" ? Theme.dp(960)
             : win.view === "tray" ? Theme.dp(360)
             : win.view === "launcher" ? ((win.shell && win.shell.launcherTab === "packages") ? Theme.dp(820) : Theme.dp(680))
-            : win.view === "panel" ? (
-                win.page === "wallpapers" ? Theme.dp(860)
-                : (win.page === "settings" || win.page === "games" || win.page === "updates" || win.page === "opencode") ? Theme.dp(820)
-                : (win.page === "calendar" || win.page === "weather" || win.page === "timers") ? Theme.dp(520)
-                : Theme.dp(440)
-            ) : Theme.dp(440);
+            : win.view === "panel" ? win.sizeClasses[win.pageSizes[win.page] || "s"]
+            : Theme.dp(440);
         return win.width > 0 ? Math.min(rawW, win.width - Theme.dp(24)) : rawW;
     }
     // активное окно во весь экран на этом output → остров уступает игрушке
@@ -164,7 +175,7 @@ PanelWindow {
             x: shadowHost.padH
             y: shadowHost.padTop
             width: win.big ? win.panelW : (idlePill.implicitWidth + Theme.dp(12) * 2)
-            height: win.big ? Math.min(contentCol.implicitHeight + Theme.dp(32), win.panelMax) : Math.max(Theme.dp(34), idlePill.implicitHeight + Theme.dp(6))
+            height: win.big ? Math.min(contentCol.implicitHeight + panelFace.headerSpace + Theme.dp(32), win.panelMax) : Math.max(Theme.dp(34), idlePill.implicitHeight + Theme.dp(6))
             // idle — Lucid-пилюля (radiusPill), панель — крупный скруглённый
             // контейнер (radiusXl / shapeXlInc для лончера). Без обводки.
             // notch: капсула прижата к кромке — верхние углы прямые, низ полный
@@ -215,6 +226,8 @@ PanelWindow {
                 opacity: win.big ? 1 : 0
                 scale: win.big ? 1 : 1.04
                 focus: win.big
+                readonly property int headerSpace: panelHeader.visible
+                    ? panelHeader.height + (contentCol.implicitHeight > 0 ? Theme.dp(14) : 0) : 0
                 Keys.onEscapePressed: (event) => {
                     if (win.shell) win.shell.closeOverlays();
                     event.accepted = true;
@@ -228,13 +241,81 @@ PanelWindow {
                 Behavior on opacity { NumberAnimation { duration: win.big ? Theme.durEnter : Theme.durExit; easing.type: Easing.OutCubic } }
                 Behavior on scale { NumberAnimation { duration: Theme.ms(220); easing.type: Easing.OutCubic } }
 
-        Flickable {
-            id: panelView
+                SequentialAnimation {
+                    id: pageEnterAnimation
+                    PropertyAction { target: panelView; property: "opacity"; value: 0 }
+                    NumberAnimation {
+                        target: panelView
+                        property: "opacity"
+                        to: 1
+                        duration: Theme.durEnter
+                        easing.type: Easing.Bezier
+                        easing.bezierCurve: Theme.easeEmphasizedDecel
+                    }
+                }
+
+        // Шапка вне прокручиваемой области: не мигает при смене страницы.
+        RowLayout {
+            id: panelHeader
+            visible: win.mode === "panel" || win.mode === "tray"
             width: win.panelW - Theme.dp(32)
-            height: Math.min(contentCol.implicitHeight, win.panelMax - Theme.dp(32))
+            height: Theme.dp(52)
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: Theme.dp(16)
+            spacing: Theme.dp(8)
+            IconButton {
+                icon: "arrow_back"
+                visible: win.mode === "panel" && win.page !== ""
+                onClicked: if (win.shell) win.shell.setPage("")
+            }
+            ColumnLayout {
+                spacing: -Theme.dp(1)
+                visible: win.mode === "panel" && win.page === ""
+                LText {
+                    role: "titleMedium"
+                    color: Theme.text
+                    text: Qt.formatDateTime(win.now, "HH:mm")
+                }
+                LText {
+                    role: "bodySmall"
+                    color: Theme.subtext
+                    text: win.now.toLocaleDateString(Qt.locale("ru_RU"), "dddd, d MMMM")
+                }
+            }
+            LText {
+                visible: win.mode === "panel" && win.page !== ""
+                role: "titleMedium"
+                color: Theme.text
+                text: win.pageTitle
+            }
+            LText { // заголовок вида «трей»
+                visible: win.mode === "tray"
+                role: "titleMedium"
+                color: Theme.text
+                text: "Трей"
+            }
+            Item { Layout.fillWidth: true }
+            IconButton {
+                visible: win.mode === "panel" && win.page === ""
+                icon: "settings"
+                onClicked: if (win.shell) win.shell.setPage(win.page === "settings" ? "" : "settings")
+            }
+            IconButton {
+                visible: win.mode === "panel"
+                icon: "power_settings_new"
+                variant: "tonal"
+                onClicked: if (win.shell) win.shell.setPage(win.page === "power" ? "" : "power")
+            }
+        }
+
+        Flickable {
+            id: panelView
+            width: win.panelW - Theme.dp(32)
+            height: Math.min(contentCol.implicitHeight, win.panelMax - Theme.dp(32) - panelFace.headerSpace)
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: Theme.dp(16) + panelFace.headerSpace
             contentWidth: width
             contentHeight: contentCol.implicitHeight
             clip: true
@@ -245,58 +326,6 @@ PanelWindow {
                 id: contentCol
                 width: panelView.width
                 spacing: Theme.dp(14)
-
-                // header — только для панели/трея: в лончере и диспетчере
-                // нулевая строка всё равно съедала спейсинг и сдвигала контент.
-                RowLayout {
-                    visible: win.mode === "panel" || win.mode === "tray"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.dp(52)
-                    spacing: Theme.dp(8)
-                    IconButton {
-                        icon: "arrow_back"
-                        visible: win.mode === "panel" && win.page !== ""
-                        onClicked: if (win.shell) win.shell.setPage("")
-                    }
-                    ColumnLayout {
-                        spacing: -Theme.dp(1)
-                        visible: win.mode === "panel" && win.page === ""
-                        LText {
-                            role: "titleMedium"
-                            color: Theme.text
-                            text: Qt.formatDateTime(win.now, "HH:mm")
-                        }
-                        LText {
-                            role: "bodySmall"
-                            color: Theme.subtext
-                            text: win.now.toLocaleDateString(Qt.locale("ru_RU"), "dddd, d MMMM")
-                        }
-                    }
-                    LText {
-                        visible: win.mode === "panel" && win.page !== ""
-                        role: "titleMedium"
-                        color: Theme.text
-                        text: win.pageTitle
-                    }
-                    LText { // заголовок вида «трей»
-                        visible: win.mode === "tray"
-                        role: "titleMedium"
-                        color: Theme.text
-                        text: "Трей"
-                    }
-                    Item { Layout.fillWidth: true }
-                    IconButton {
-                        visible: win.mode === "panel" && win.page === ""
-                        icon: "settings"
-                        onClicked: if (win.shell) win.shell.setPage(win.page === "settings" ? "" : "settings")
-                    }
-                    IconButton {
-                        visible: win.mode === "panel"
-                        icon: "power_settings_new"
-                        variant: "tonal"
-                        onClicked: if (win.shell) win.shell.setPage(win.page === "power" ? "" : "power")
-                    }
-                }
 
                 RootPage { win: win }
                 WifiPage { win: win }
@@ -435,22 +464,25 @@ PanelWindow {
         }
     }
 
-    readonly property string pageTitle: page === "wifi" ? "Wi-Fi"
-                                      : page === "bluetooth" ? "Bluetooth"
-                                      : page === "volume" ? "Звук"
-                                      : page === "brightness" ? "Яркость"
-                                      : page === "power" ? "Питание"
-                                      : page === "wallpapers" ? "Обои"
-                                      : page === "clipboard" ? "Буфер обмена"
-                                      : page === "weather" ? "Погода"
-                                      : page === "system" ? "Система"
-                                      : page === "calendar" ? "Календарь"
-                                      : page === "timers" ? "Таймеры"
-                                      : page === "opencode" ? "OpenCode"
-                                      : page === "emoji" ? "Эмодзи"
-                                      : page === "games" ? "Игры"
-                                      : page === "updates" ? "Обновления"
-                                      : page === "settings" ? "Настройки" : ""
+    readonly property var pageTitles: ({
+        wifi: "Wi-Fi",
+        bluetooth: "Bluetooth",
+        volume: "Звук",
+        brightness: "Яркость",
+        power: "Питание",
+        wallpapers: "Обои",
+        clipboard: "Буфер обмена",
+        weather: "Погода",
+        system: "Система",
+        calendar: "Календарь",
+        timers: "Таймеры",
+        opencode: "OpenCode",
+        emoji: "Эмодзи",
+        games: "Игры",
+        updates: "Обновления",
+        settings: "Настройки"
+    })
+    readonly property string pageTitle: pageTitles[page] || ""
 
     property string wifiSel: ""
     property bool showAuto: false
@@ -470,6 +502,13 @@ PanelWindow {
         if (win.shell) win.shell.setPage("");
     }
     onPageChanged: {
+        if (page !== "" && win.mode === "panel" && panelFace.opacity >= 1)
+            pageEnterAnimation.restart();
+        else {
+            pageEnterAnimation.stop();
+            panelView.opacity = 1;
+        }
+
         if (page === "wifi") { win.wifiSel = ""; Sys.refreshWifi(); }
         else if (page === "bluetooth") Sys.startBtScan();
     }

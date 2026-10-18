@@ -23,7 +23,7 @@ ColumnLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === "calendar"
     Layout.fillWidth: true
-    spacing: Theme.dp(10)
+    spacing: Theme.pageSpacing
 
     // первый заход: выбранным делаем сегодня
     onVisibleChanged: if (visible && cal.selected === null) cal.goToday()

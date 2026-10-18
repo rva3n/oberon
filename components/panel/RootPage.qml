@@ -20,7 +20,7 @@ ColumnLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === ""
     Layout.fillWidth: true
-    spacing: Theme.dp(12)
+    spacing: Theme.pageSpacing
 
     // ── форматирование времени ──────────────────────────────────────────
     function fmtTimer(sec) {

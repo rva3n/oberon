@@ -29,7 +29,7 @@ ColumnLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === "wallpapers"
     Layout.fillWidth: true
-    spacing: Theme.dp(8)
+    spacing: Theme.pageSpacingCompact
 
     function switchTab(nextTab) {
         searchDebounce.stop();

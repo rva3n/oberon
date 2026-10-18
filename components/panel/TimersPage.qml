@@ -29,7 +29,7 @@ ColumnLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === "timers"
     Layout.fillWidth: true
-    spacing: Theme.dp(10)
+    spacing: Theme.pageSpacing
 
     Timer {
         interval: 1000

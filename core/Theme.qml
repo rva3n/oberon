@@ -217,6 +217,10 @@ Singleton {
     readonly property real disabledContent: 0.38
     readonly property real disabledContainer: 0.12
 
+    // Интервалы общего ритма страниц.
+    readonly property int pageSpacing: root.dp(12)
+    readonly property int pageSpacingCompact: root.dp(8)
+
     // ── Формы ──────────────────────────────────────────────────────────
     readonly property int radiusPill: 999
     readonly property int radiusXs: root.rad(8)

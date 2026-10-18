@@ -17,7 +17,7 @@ ColumnLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === "opencode"
     Layout.fillWidth: true
-    spacing: Theme.dp(10)
+    spacing: Theme.pageSpacing
 
     property string tab: "limits"
 

@@ -38,7 +38,7 @@ ColumnLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === "games"
     Layout.fillWidth: true
-    spacing: Theme.dp(12)
+    spacing: Theme.pageSpacing
 
     // Реактивно собираемая строка параметров запуска Steam (%command%)
     readonly property string generatedCommand: {
