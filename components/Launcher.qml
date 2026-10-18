@@ -73,6 +73,11 @@ FocusScope {
             emojiTab.moveSel(delta);
     }
     function handleEscape() {
+        if (launcher.currentTab === "apps" && appsTab.pendingBoot !== null) {
+            appsTab.cancelBoot();
+            searchField.forceActiveFocus();
+            return;
+        }
         if (launcher.currentTab === "packages" && pkgTab.detailsOpen) {
             pkgTab.closeDetails();
             return;

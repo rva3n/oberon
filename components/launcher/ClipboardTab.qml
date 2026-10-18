@@ -56,6 +56,20 @@ ColumnLayout {
         Quickshell.execDetached(["sh", "-c", "setsid -f sh -c 'sleep 0.25; wtype -M ctrl v -m ctrl'"]);
     }
 
+    function copyDirect(text) {
+        Quickshell.execDetached(["sh", "-c", "printf %s " + tab.shq(String(text)) + " | wl-copy"]);
+    }
+    function openTarget(entry) {
+        if (!entry) return;
+        const target = entry.kind === "url" ? entry.url : entry.path;
+        if (!target) return;
+        if (tab.shell) tab.shell.closeOverlays();
+        Quickshell.execDetached(["xdg-open", String(target)]);
+    }
+    function openMedia(entry) {
+        if (entry && entry.path && tab.shell) tab.shell.openMedia(entry.path);
+    }
+
     function activate(index) {
         if (index < tab.fPins.length) {
             const p = tab.fPins[index];
@@ -256,12 +270,15 @@ ColumnLayout {
         property int baseIndex: 0
         property bool pinned: false
         property bool selected: false
+        property bool hovering: false
 
         signal hovered(int rowIndex)
         signal activated(int rowIndex)
 
         readonly property int rowIndex: ci.baseIndex + ci.index
         readonly property bool isImage: !!ci.modelData && ci.modelData.type === "image"
+        readonly property string kind: ci.modelData && ci.modelData.kind ? String(ci.modelData.kind) : ""
+        readonly property bool showSmartActions: ci.hovering || ci.selected
         // в cliphist иногда попадает текст с NUL и управляющими байтами — чистим
         function clean(s) {
             return String(s === undefined || s === null ? "" : s)
@@ -329,27 +346,74 @@ ColumnLayout {
 
                     Item { // текст: без контейнера, иконка по центру области 24
                         anchors.centerIn: parent
-                        visible: !ci.isImage
+                        visible: !ci.isImage && ci.kind !== "color"
                         implicitWidth: Theme.dp(24)
                         implicitHeight: Theme.dp(24)
 
                         Icon {
                             anchors.centerIn: parent
-                            name: "description"
+                            name: ci.kind === "image-file" ? "image"
+                                : (ci.kind === "url" ? "link" : "description")
                             size: Theme.dp(16)
                             color: Theme.subtext
                         }
+                    }
+
+                    Rectangle { // цветовой свотч для HEX-строки
+                        visible: ci.kind === "color"
+                        width: Theme.dp(22)
+                        height: Theme.dp(22)
+                        anchors.centerIn: parent
+                        radius: width / 2
+                        color: ci.modelData.swatch || Theme.bgTile
+                        border.width: Theme.dp(1)
+                        border.color: Theme.outline
                     }
                 }
             }
 
             HoverHandler {
-                onHoveredChanged: if (hovered) ci.hovered(ci.rowIndex)
+                onHoveredChanged: {
+                    ci.hovering = hovered;
+                    if (hovered) ci.hovered(ci.rowIndex);
+                }
             }
 
             trailing: Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.dp(4)
+
+                Button {
+                    visible: ci.showSmartActions && ci.kind === "color"
+                    size: "xs"
+                    variant: "text"
+                    text: "RGB"
+                    onClicked: tab.copyDirect(ci.modelData.rgb)
+                }
+
+                Button {
+                    visible: ci.showSmartActions && ci.kind === "color"
+                    size: "xs"
+                    variant: "text"
+                    text: "HSL"
+                    onClicked: tab.copyDirect(ci.modelData.hsl)
+                }
+
+                Button {
+                    visible: ci.showSmartActions && (ci.kind === "url" || ci.kind === "file" || ci.kind === "image-file")
+                    size: "xs"
+                    variant: "text"
+                    text: "Открыть"
+                    onClicked: tab.openTarget(ci.modelData)
+                }
+
+                Button {
+                    visible: ci.showSmartActions && ci.kind === "image-file"
+                    size: "xs"
+                    variant: "text"
+                    text: "В Медиа"
+                    onClicked: tab.openMedia(ci.modelData)
+                }
 
                 IconButton { // pin: закреплённая строка — filled
                     icon: "push_pin"

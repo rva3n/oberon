@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import "../../core"
 import "../../ui"
 
@@ -17,6 +18,9 @@ Item {
     property string query: ""
     property int sel: 0
     property var shell: null
+    property var bootSystems: []
+    property var pendingBoot: null
+    readonly property string bootosScript: Quickshell.env("HOME") + "/oberon/scripts/bootos.sh"
 
     signal hovered(int index)
     signal selectionRequested(int index)
@@ -95,11 +99,70 @@ Item {
         comment: "Результат · Enter — скопировать",
         icon: "calculate"
     })
-    // модель списка: псевдо-строка калькулятора + приложения
-    readonly property var rows: root.calcResult !== "" ? [root.calcRow].concat(root.apps) : root.apps
+    readonly property var bootRows: {
+        const q = root.query.trim().toLowerCase();
+        if (q === "" || root.bootSystems.length === 0) return [];
+        const named = root.bootSystems.filter(function (system) {
+            const name = String(system.name || "").toLowerCase();
+            return name !== "" && (name.indexOf(q) !== -1 || q.indexOf(name) !== -1);
+        });
+        const keyword = ["ос", "boot", "загруз", "windows", "linux"].some(function (word) {
+            return q.indexOf(word) !== -1;
+        });
+        const matches = named.length > 0 ? named : (keyword ? root.bootSystems : []);
+        return matches.map(function (system) {
+            return {
+                boot: true,
+                id: String(system.id),
+                osName: String(system.name),
+                name: "Загрузиться в " + String(system.name),
+                comment: "Система перезагрузится",
+                kind: String(system.kind || "other")
+            };
+        });
+    }
+    // модель списка: калькулятор, затем подходящие системы и приложения
+    readonly property var rows: {
+        const items = root.bootRows.concat(root.apps);
+        return root.calcResult !== "" ? [root.calcRow].concat(items) : items;
+    }
     readonly property int count: root.rows.length
 
     implicitHeight: Theme.dp(440)
+
+    Process {
+        id: bootListProc
+        command: ["bash", root.bootosScript, "list"]
+        running: true
+        stdout: SplitParser {
+            onRead: line => {
+                try {
+                    const result = JSON.parse(line);
+                    root.bootSystems = Array.isArray(result)
+                        ? result.filter(function (system) {
+                            return system && system.id !== undefined && system.name;
+                        }) : [];
+                } catch (e) {
+                    root.bootSystems = [];
+                }
+            }
+        }
+    }
+
+    function cancelBoot() {
+        root.pendingBoot = null;
+    }
+
+    function confirmBoot() {
+        const system = root.pendingBoot;
+        if (!system) return;
+        root.pendingBoot = null;
+        if (root.shell) root.shell.closeOverlays();
+        Quickshell.execDetached([
+            "sh", "-c", "pkexec \"$1\" boot \"$2\" && systemctl reboot",
+            "sh", root.bootosScript, String(system.id)
+        ]);
+    }
 
     function activate(index) {
         // индекс 0 занят строкой калькулятора — копируем результат
@@ -110,6 +173,15 @@ Item {
         }
         const a = root.rows[index];
         if (!a) return;
+        if (root.pendingBoot) {
+            if (a.boot === true && String(root.pendingBoot.id) === String(a.id))
+                root.confirmBoot();
+            return;
+        }
+        if (a.boot === true) {
+            root.pendingBoot = a;
+            return;
+        }
         let cmd = a.command;
         if (typeof cmd === "string") cmd = ["sh", "-c", cmd];
         Quickshell.execDetached(cmd);
@@ -229,8 +301,9 @@ Item {
             required property int index
 
             readonly property bool isCalc: modelData !== null && modelData.calc === true
+            readonly property bool isBoot: modelData !== null && modelData.boot === true
             readonly property bool selected: rowItem.index === root.sel && !rowItem.isCalc
-            readonly property bool app: !rowItem.isCalc
+            readonly property bool app: !rowItem.isCalc && !rowItem.isBoot
             readonly property string iconPath: (rowItem.app && modelData.icon) ? Quickshell.iconPath(modelData.icon, true) : ""
             readonly property bool hasIcon: rowItem.iconPath !== ""
             readonly property bool running: rowItem.app && root.appRunning(modelData)
@@ -253,7 +326,7 @@ Item {
                 id: appSurface
 
                 anchors.fill: parent
-                visible: rowItem.app
+                visible: !rowItem.isCalc
                 headline: rowItem.modelData.name || ""
                 headlineRole: "bodyLarge"
                 headlineWeight: Theme.typeWeight("bodyLarge")
@@ -295,7 +368,7 @@ Item {
                     Icon {
                         anchors.centerIn: parent
                         visible: !rowItem.hasIcon
-                        name: "apps"
+                        name: rowItem.isBoot ? "restart_alt" : "apps"
                         size: Theme.dp(22)
                         color: rowItem.selected ? Theme.fgSecondaryContainer : Theme.subtext
                     }
@@ -397,6 +470,71 @@ Item {
                 }
             }
 
+        }
+    }
+
+    Item {
+        anchors.fill: parent
+        visible: root.pendingBoot !== null
+        z: 10
+
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.a(Theme.scrim, 0.48)
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.cancelBoot()
+            }
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - Theme.dp(32), Theme.dp(380))
+            height: bootConfirmLayout.implicitHeight + Theme.dp(40)
+            radius: Theme.shapeXl
+            color: Theme.mHigh
+
+            ColumnLayout {
+                id: bootConfirmLayout
+                anchors.fill: parent
+                anchors.margins: Theme.dp(20)
+                spacing: Theme.dp(10)
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "titleLarge"
+                    text: root.pendingBoot ? "Загрузиться в " + root.pendingBoot.osName + "?" : ""
+                    wrapMode: Text.WordWrap
+                    color: Theme.text
+                }
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodyMedium"
+                    text: "Система перезагрузится"
+                    color: Theme.subtext
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.dp(4)
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        size: "s"
+                        variant: "text"
+                        text: "Отмена"
+                        onClicked: root.cancelBoot()
+                    }
+                    Button {
+                        size: "s"
+                        variant: "filled"
+                        text: "Загрузиться"
+                        onClicked: root.confirmBoot()
+                    }
+                }
+            }
         }
     }
 

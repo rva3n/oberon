@@ -17,6 +17,68 @@ Singleton {
 
     function shq(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 
+    function normalizeUrl(value) {
+        const text = String(value || "").trim();
+        return /^www\./i.test(text) ? "https://" + text : text;
+    }
+    function normalizePath(value) {
+        let path = String(value || "").trim();
+        if (/^file:\/\//i.test(path)) {
+            path = path.slice(7);
+            if (/^localhost\//i.test(path)) path = path.slice(9);
+            if (path !== "" && path.charAt(0) !== "/") path = "/" + path;
+            try { path = decodeURIComponent(path); } catch (e) {}
+        }
+        const home = Quickshell.env("HOME") || "";
+        if (path === "~") return home;
+        if (path.indexOf("~/") === 0) return home + path.slice(1);
+        return path;
+    }
+    function describe(text) {
+        const value = String(text || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim();
+        let kind = "text";
+        let rgb = "", hsl = "", swatch = "", url = "", path = "";
+
+        if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) {
+            kind = "color";
+            let hex = value.slice(1);
+            if (hex.length === 3) hex = hex.charAt(0) + hex.charAt(0)
+                + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+            const r = parseInt(hex.slice(0, 2), 16);
+            const g = parseInt(hex.slice(2, 4), 16);
+            const b = parseInt(hex.slice(4, 6), 16);
+            const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) : 255;
+            rgb = "rgb(" + r + ", " + g + ", " + b + ")";
+
+            const rn = r / 255, gn = g / 255, bn = b / 255;
+            const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+            let h = 0, s = 0;
+            const l = (max + min) / 2;
+            if (max !== min) {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                case rn: h = (gn - bn) / d + (gn < bn ? 6 : 0); break;
+                case gn: h = (bn - rn) / d + 2; break;
+                case bn: h = (rn - gn) / d + 4; break;
+                }
+                h /= 6;
+            }
+            hsl = "hsl(" + Math.round(h * 360) + ", " + Math.round(s * 100)
+                + "%, " + Math.round(l * 100) + "%)";
+            swatch = Qt.rgba(rn, gn, bn, a / 255);
+        } else if (/^(https?:\/\/[^\s]+|www\.[^\s]+)$/i.test(value)) {
+            kind = "url";
+            url = c.normalizeUrl(value);
+        } else if (value.charAt(0) === "/" || value.indexOf("~/") === 0 || /^file:\/\//i.test(value)) {
+            const filePath = /^file:\/\//i.test(value) ? value.replace(/[?#].*$/, "") : value;
+            kind = /\.(?:png|jpe?g|gif|webp|bmp|svg)$/i.test(filePath) ? "image-file" : "file";
+            path = c.normalizePath(filePath);
+        }
+
+        return { kind: kind, rgb: rgb, hsl: hsl, swatch: swatch, url: url, path: path };
+    }
+
     // Keep capturing the clipboard.
     Process {
         id: storeProc
@@ -44,11 +106,19 @@ Singleton {
         const i = line.indexOf("|"); if (i < 0) return;
         const j = line.indexOf("|", i + 1); if (j < 0) return;
         const id = line.slice(0, i);
+        const preview = line.slice(j + 1);
+        const info = c.describe(preview);
         c._buf.push({
             id: id,
             type: line.slice(i + 1, j),
-            preview: line.slice(j + 1),
-            thumb: Quickshell.env("HOME") + "/.cache/oberon/clip/" + id + ".png"
+            preview: preview,
+            thumb: Quickshell.env("HOME") + "/.cache/oberon/clip/" + id + ".png",
+            kind: info.kind,
+            rgb: info.rgb,
+            hsl: info.hsl,
+            swatch: info.swatch,
+            url: info.url,
+            path: info.path
         });
     }
 
