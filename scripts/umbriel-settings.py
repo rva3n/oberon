@@ -229,6 +229,7 @@ SCALAR_KEYS = (
     ("input.touchpad.natural_scroll", ("input", "touchpad", "natural_scroll"), bool),
     ("input.touchpad.disable_while_typing", ("input", "touchpad", "disable_while_typing"), bool),
     ("input.touchpad.disable_on_external_mouse", ("input", "touchpad", "disable_on_external_mouse"), bool),
+    ("input.keyboard.layout", ("input", "keyboard", "layout"), str),
     ("input.keyboard.repeat_delay", ("input", "keyboard", "repeat_delay"), int),
     ("input.keyboard.repeat_rate", ("input", "keyboard", "repeat_rate"), int),
     ("input.keyboard.options", ("input", "keyboard", "options"), str),
