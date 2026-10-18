@@ -203,6 +203,7 @@ ShellRoot {
         root.view = "panel";
         root.panelPage = "files";
     }
+    function openVault() { root.view = "panel"; root.panelPage = "vault"; }
     function togglePanel()    { if (root.view === "panel") { root.view = "idle"; root.panelPage = ""; } else { root.openPanel(); } }
     function toggleLauncher() { if (root.view === "launcher") { root.view = "idle"; } else { root.openLauncher(root.launcherTab); } }
     function taskman()        { if (root.view === "taskman") { root.view = "idle"; } else { root.view = "taskman"; root.panelPage = ""; } }
@@ -324,7 +325,8 @@ ShellRoot {
         function pageCalendar() { root.view = "panel"; root.panelPage = "calendar"; }
         function pageTimers() { root.view = "panel"; root.panelPage = "timers"; }
     function pageGames() { root.view = "panel"; root.panelPage = "games"; }
-    function pageUpdates() { root.view = "panel"; root.panelPage = "updates"; }
+        function pageUpdates() { root.view = "panel"; root.panelPage = "updates"; }
+        function vault() { root.openVault(); }
         function emoji() {
             if (root.view === "launcher" && root.launcherTab === "emoji")
                 root.closeOverlays();

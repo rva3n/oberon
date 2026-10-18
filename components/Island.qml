@@ -59,6 +59,7 @@ PanelWindow {
         opencode: "l",
         media: "l",
         files: "l",
+        vault: "m",
         calendar: "m",
         weather: "m",
         timers: "m",
@@ -348,6 +349,7 @@ PanelWindow {
                 UpdatesPage { win: win }
                 OpenCodePage { win: win }
                 FilesView { win: win }
+                VaultView { win: win }
 
                 TaskManager { visible: win.mode === "taskman"; shell: win.shell; initialTab: win.shell ? win.shell.taskmanTab : 0 }
 
@@ -490,7 +492,8 @@ PanelWindow {
         settings: "Настройки",
         record: "Запись",
         media: "Медиа",
-        files: "Файлы"
+        files: "Файлы",
+        vault: "Пароли"
     })
     readonly property string pageTitle: pageTitles[page] || ""
 

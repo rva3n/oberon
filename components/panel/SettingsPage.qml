@@ -107,8 +107,11 @@ RowLayout {
           sub: "Мышь, клавиатура, тачпад и фокус Umbriel.",
           keys: "mouse keyboard layouts xkb pointer cursor sensitivity speed accel input мышь клавиатура раскладки указатель курсор скорость чувствительность разгон" },
         { id: "lock", title: "Экран блокировки", glyph: "lock", page: "lock",
-          sub: "Блокировка и действия при бездействии.",
-          keys: "lock screen blur idle блокировка экран размытие безопасность" },
+           sub: "Блокировка и действия при бездействии.",
+           keys: "lock screen blur idle блокировка экран размытие безопасность" },
+        { id: "vault", title: "Пароли", glyph: "key", page: "vault",
+          sub: "Зашифрованное хранилище паролей.",
+          keys: "vault password passwords пароли пароль хранилище безопасность" },
         { id: "system", title: "Система", glyph: "settings", page: "system",
           sub: "Запись экрана и пользовательские настройки Oberon.",
           keys: "about system reset defaults record video recording экран запись сброс настройки по умолчанию" },
@@ -128,7 +131,7 @@ RowLayout {
         { id: "appearance", title: "Оформление", glyph: "colors", pages: ["look", "weather", "motion", "night"] },
         { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "games", "opencode"] },
         { id: "devices", title: "Устройства", glyph: "desktop_windows", pages: ["display", "input"] },
-        { id: "security", title: "Безопасность", glyph: "lock", pages: ["lock"] },
+        { id: "security", title: "Безопасность", glyph: "lock", pages: ["lock", "vault"] },
         { id: "system", title: "Система", glyph: "settings", pages: ["system", "power", "compositor", "updates"] }
     ]
 
@@ -2327,6 +2330,31 @@ RowLayout {
                     color: Theme.subtext
                     wrapMode: Text.WordWrap
                     text: "Время автоматической блокировки настраивается в разделе «Питание». Отдельных параметров экрана блокировки в старой странице настроек не было."
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "vault"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Хранилище паролей"
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtext
+                    wrapMode: Text.WordWrap
+                    text: "Записи шифруются мастер-паролем. При закрытии страницы или потере фокуса хранилище блокируется; время бездействия — 15 минут."
+                }
+                SButton {
+                    text: "Открыть хранилище"
+                    icon: "key"
+                    variant: "tonal"
+                    onClicked: if (page.win && page.win.shell) page.win.shell.openVault()
                 }
             }
         }

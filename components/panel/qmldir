@@ -15,3 +15,4 @@ SettingsPage 1.0 SettingsPage.qml
 OpenCodePage 1.0 OpenCodePage.qml
 MediaView 1.0 MediaView.qml
 FilesView 1.0 FilesView.qml
+VaultView 1.0 VaultView.qml
