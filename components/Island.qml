@@ -58,6 +58,7 @@ PanelWindow {
         updates: "l",
         opencode: "l",
         media: "l",
+        files: "l",
         calendar: "m",
         weather: "m",
         timers: "m",
@@ -346,6 +347,7 @@ PanelWindow {
                 GamesPage { win: win }
                 UpdatesPage { win: win }
                 OpenCodePage { win: win }
+                FilesView { win: win }
 
                 TaskManager { visible: win.mode === "taskman"; shell: win.shell; initialTab: win.shell ? win.shell.taskmanTab : 0 }
 
@@ -487,7 +489,8 @@ PanelWindow {
         updates: "Обновления",
         settings: "Настройки",
         record: "Запись",
-        media: "Медиа"
+        media: "Медиа",
+        files: "Файлы"
     })
     readonly property string pageTitle: pageTitles[page] || ""
 

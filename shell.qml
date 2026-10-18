@@ -15,6 +15,7 @@ ShellRoot {
     property string view: "idle"   // idle | panel | launcher | taskman | tray
     property string panelPage: ""
     property string mediaPath: ""
+    property string filesStartPath: ""
     property string settingsSection: "look"
     property bool widgetsEditing: false
     property string launcherTab: "apps"    // apps | clipboard | emoji | packages (вкладки лончера)
@@ -186,6 +187,22 @@ ShellRoot {
     // ── Actions ──────────────────────────────────────────────────────
     function openPanel()      { root.view = "panel"; root.panelPage = ""; }
     function openLauncher(tab) { root.launcherTab = tab || "apps"; root.view = "launcher"; }
+    function expandLocalPath(path) {
+        const value = String(path || "").trim();
+        const home = Quickshell.env("HOME");
+        return value === "~" ? home : (value.indexOf("~/") === 0 ? home + value.slice(1) : value);
+    }
+    function openMedia(path) {
+        root.mediaPath = root.expandLocalPath(path);
+        root.view = "panel";
+        root.panelPage = "media";
+    }
+    function openFiles(path) {
+        const value = String(path || "").trim();
+        root.filesStartPath = value === "" ? "" : root.expandLocalPath(value);
+        root.view = "panel";
+        root.panelPage = "files";
+    }
     function togglePanel()    { if (root.view === "panel") { root.view = "idle"; root.panelPage = ""; } else { root.openPanel(); } }
     function toggleLauncher() { if (root.view === "launcher") { root.view = "idle"; } else { root.openLauncher(root.launcherTab); } }
     function taskman()        { if (root.view === "taskman") { root.view = "idle"; } else { root.view = "taskman"; root.panelPage = ""; } }
@@ -296,12 +313,9 @@ ShellRoot {
         function pagePower() { root.view = "panel"; root.panelPage = "power"; }
         function pageWeather() { root.view = "panel"; root.panelPage = "weather"; }
         function pageRecord() { root.view = "panel"; root.panelPage = "record"; }
+        function files(path: string) { root.openFiles(path); }
         function media(path: string) {
-            const value = String(path || "").trim();
-            const home = Quickshell.env("HOME");
-            root.mediaPath = value === "~" ? home : (value.indexOf("~/") === 0 ? home + value.slice(1) : value);
-            root.view = "panel";
-            root.panelPage = "media";
+            root.openMedia(path);
         }
         function pageSystem() { root.view = "taskman"; root.panelPage = ""; }
         function taskman() { root.view = "taskman"; root.panelPage = ""; }
