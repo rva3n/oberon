@@ -7,8 +7,8 @@ import "../../ui"
 import ".."
 
 // Страница «Настройки» — двухколоночный layout в духе Lucid: слева рейл
-// разделов (180), справа — содержимое выбранного пункта. Ширину панели (620)
-// задаёт Island, контент невелик, поэтому прокрутка не нужна.
+// разделов (196dp), справа — содержимое выбранного пункта. Ширину панели (820dp)
+// задаёт Island.
 // Внешний вид и погода пишут в Prefs → ~/oberon/prefs.json.
 //
 // Анатомия Lucid: рейл — иконка + подпись, выбранная запись залита
@@ -32,6 +32,7 @@ RowLayout {
 
     visible: win !== null && win.mode === "panel" && win.page === "settings"
     Layout.fillWidth: true
+    Layout.minimumHeight: win ? Math.min(Theme.dp(620), win.panelMax - Theme.dp(72)) : Theme.dp(620)
     spacing: Theme.dp(16)
 
     // при каждом открытии страницы — выбранный раздел (или 0) и свежие настройки Umbriel
@@ -466,7 +467,7 @@ RowLayout {
         id: rail
 
         Layout.alignment: Qt.AlignTop
-        Layout.preferredWidth: Theme.dp(180)
+        Layout.preferredWidth: Theme.dp(196)
         spacing: Theme.dp(4)
 
         NavItem {

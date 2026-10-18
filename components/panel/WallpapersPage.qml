@@ -176,12 +176,12 @@ ColumnLayout {
     }
 
     // ── 3A. Wallhaven Filters ──────────────────────────────────────────
-    ColumnLayout {
+    Ui.Card {
         visible: Wallpaper.tab === "wallhaven"
         Layout.fillWidth: true
-        spacing: Theme.dp(6)
+        pad: Theme.dp(10)
 
-        // Row 1: Categories (multi-toggle) + Purity + Aspect Ratios
+        // Row 1: Categories (multi-toggle) + Purity + Aspect Ratios + Minimum Resolution
         Flow {
             Layout.fillWidth: true
             spacing: Theme.dp(5)
@@ -208,6 +208,12 @@ ColumnLayout {
                 onClicked: Wallpaper.toggleWhCategory(2)
             }
 
+            Rectangle {
+                width: 1
+                height: Theme.dp(20)
+                color: Theme.outlineVariant
+            }
+
             Ui.Chip {
                 size: "sm"
                 horizontalPadding: 7
@@ -229,6 +235,12 @@ ColumnLayout {
                     Wallpaper.whPurity = Wallpaper.whPurity === "110" ? "100" : "110";
                     Wallpaper.searchWallhaven();
                 }
+            }
+
+            Rectangle {
+                width: 1
+                height: Theme.dp(20)
+                color: Theme.outlineVariant
             }
 
             Ui.Chip {
@@ -264,9 +276,36 @@ ColumnLayout {
                     Wallpaper.searchWallhaven();
                 }
             }
+
+            Rectangle {
+                width: 1
+                height: Theme.dp(20)
+                color: Theme.outlineVariant
+            }
+
+            Repeater {
+                model: [
+                    { key: "", label: "Любое" },
+                    { key: "1920x1080", label: "1080p+" },
+                    { key: "2560x1440", label: "2K+" },
+                    { key: "3840x2160", label: "4K+" }
+                ]
+                delegate: Ui.Chip {
+                    required property var modelData
+                    size: "sm"
+                    horizontalPadding: 7
+                    kind: "assist"
+                    label: modelData.label
+                    selected: Wallpaper.whAtleast === modelData.key
+                    onClicked: {
+                        Wallpaper.whAtleast = modelData.key;
+                        Wallpaper.searchWallhaven();
+                    }
+                }
+            }
         }
 
-        // Row 2: Sorting + Top Range (when Топ active) + Minimum Resolution
+        // Row 2: Sorting + Top Range (when Топ active)
         Flow {
             Layout.fillWidth: true
             spacing: Theme.dp(5)
@@ -294,6 +333,13 @@ ColumnLayout {
                 }
             }
 
+            Rectangle {
+                visible: Wallpaper.whSorting === "toplist"
+                width: 1
+                height: Theme.dp(20)
+                color: Theme.outlineVariant
+            }
+
             Repeater {
                 model: Wallpaper.whSorting === "toplist" ? [
                     { key: "1d", label: "1д" },
@@ -312,27 +358,6 @@ ColumnLayout {
                     selected: Wallpaper.whTopRange === modelData.key
                     onClicked: {
                         Wallpaper.whTopRange = modelData.key;
-                        Wallpaper.searchWallhaven();
-                    }
-                }
-            }
-
-            Repeater {
-                model: [
-                    { key: "", label: "Любое" },
-                    { key: "1920x1080", label: "1080p+" },
-                    { key: "2560x1440", label: "2K+" },
-                    { key: "3840x2160", label: "4K+" }
-                ]
-                delegate: Ui.Chip {
-                    required property var modelData
-                    size: "sm"
-                    horizontalPadding: 7
-                    kind: "assist"
-                    label: modelData.label
-                    selected: Wallpaper.whAtleast === modelData.key
-                    onClicked: {
-                        Wallpaper.whAtleast = modelData.key;
                         Wallpaper.searchWallhaven();
                     }
                 }
@@ -421,32 +446,37 @@ ColumnLayout {
     }
 
     // ── 3B. MotionBGs Category Bar ─────────────────────────────────────
-    Flow {
+    Ui.Card {
         visible: Wallpaper.tab === "motion"
         Layout.fillWidth: true
-        spacing: Theme.dp(5)
+        pad: Theme.dp(10)
 
-        Repeater {
-            model: [
-                { key: "", label: "Популярные" },
-                { key: "anime", label: "Аниме" },
-                { key: "games", label: "Игры" },
-                { key: "cyberpunk", label: "Киберпанк" },
-                { key: "nature", label: "Природа" },
-                { key: "space", label: "Космос" },
-                { key: "car", label: "Авто" },
-                { key: "fantasy", label: "Фэнтези" },
-                { key: "dark", label: "Тёмные" }
-            ]
-            delegate: Ui.Chip {
-                required property var modelData
-                size: "sm"
-                kind: "assist"
-                label: modelData.label
-                selected: Wallpaper.motionCategory === modelData.key && Wallpaper.motionQuery.trim() === ""
-                onClicked: {
-                    searchField.text = "";
-                    Wallpaper.motionSetCategory(modelData.key);
+        Flow {
+            Layout.fillWidth: true
+            spacing: Theme.dp(5)
+
+            Repeater {
+                model: [
+                    { key: "", label: "Популярные" },
+                    { key: "anime", label: "Аниме" },
+                    { key: "games", label: "Игры" },
+                    { key: "cyberpunk", label: "Киберпанк" },
+                    { key: "nature", label: "Природа" },
+                    { key: "space", label: "Космос" },
+                    { key: "car", label: "Авто" },
+                    { key: "fantasy", label: "Фэнтези" },
+                    { key: "dark", label: "Тёмные" }
+                ]
+                delegate: Ui.Chip {
+                    required property var modelData
+                    size: "sm"
+                    kind: "assist"
+                    label: modelData.label
+                    selected: Wallpaper.motionCategory === modelData.key && Wallpaper.motionQuery.trim() === ""
+                    onClicked: {
+                        searchField.text = "";
+                        Wallpaper.motionSetCategory(modelData.key);
+                    }
                 }
             }
         }
@@ -534,15 +564,17 @@ ColumnLayout {
     // ── 4. Wallpaper Grid ──────────────────────────────────────────────
     Item {
         Layout.fillWidth: true
-        Layout.preferredHeight: Theme.dp(300)
+        Layout.preferredHeight: Theme.dp(390)
 
         GridView {
             id: wpGrid
 
+            readonly property int cols: width >= Theme.dp(720) ? 4 : 3
+
             anchors.fill: parent
             clip: true
-            cellWidth: 120
-            cellHeight: 84
+            cellWidth: Math.floor(width / cols)
+            cellHeight: Math.round(cellWidth * 0.58)
 
             model: Wallpaper.tab === "photos" ? wallpapersPage.filteredPhotos
                  : Wallpaper.tab === "videos" ? wallpapersPage.filteredVideos
@@ -574,12 +606,12 @@ ColumnLayout {
                     return "";
                 }
 
-                width: 112
-                height: 76
+                width: Math.max(Theme.dp(96), wpGrid.cellWidth - Theme.dp(8))
+                height: Math.max(Theme.dp(56), wpGrid.cellHeight - Theme.dp(8))
                 radius: Theme.shapeLg
                 color: Theme.bgTile
                 clip: true
-                scale: cell.selected ? 1.05 : 1
+                scale: cell.selected ? 1.03 : 1
                 z: cell.selected ? 2 : 0
 
                 Behavior on scale {
@@ -615,7 +647,7 @@ ColumnLayout {
                         }
 
                         Ui.LText {
-                            width: Theme.dp(96)
+                            width: Math.max(Theme.dp(80), cell.width - Theme.dp(16))
                             horizontalAlignment: Text.AlignHCenter
                             elide: Text.ElideMiddle
                             role: "labelSmall"

@@ -50,11 +50,20 @@ PanelWindow {
                                  : (win.osdHere && view === "idle") ? "osd" : view
     readonly property bool big: mode === "panel" || mode === "launcher" || mode === "taskman" || mode === "tray"
     readonly property string page: win.shell ? win.shell.panelPage : ""
-    // ширина панели: лончер 620, настройки 620, диспетчер 920, трей 360, остальное 404
-    readonly property int panelW: win.mode === "launcher" ? 620
-        : ((win.page === "settings" || win.page === "games" || win.page === "updates") ? 620
-        : (win.mode === "taskman" ? 920
-        : (win.mode === "tray" ? 360 : 404)))
+    // ширина панели: диспетчер 960, обои 860, настройки/игры/обновления/opencode/пакеты 820,
+    // лончер 680, календарь/погода/таймеры 520, трей 360, остальное 440
+    readonly property int panelW: {
+        const rawW = win.view === "taskman" ? Theme.dp(960)
+            : win.view === "tray" ? Theme.dp(360)
+            : win.view === "launcher" ? ((win.shell && win.shell.launcherTab === "packages") ? Theme.dp(820) : Theme.dp(680))
+            : win.view === "panel" ? (
+                win.page === "wallpapers" ? Theme.dp(860)
+                : (win.page === "settings" || win.page === "games" || win.page === "updates" || win.page === "opencode") ? Theme.dp(820)
+                : (win.page === "calendar" || win.page === "weather" || win.page === "timers") ? Theme.dp(520)
+                : Theme.dp(440)
+            ) : Theme.dp(440);
+        return win.width > 0 ? Math.min(rawW, win.width - Theme.dp(24)) : rawW;
+    }
     // активное окно во весь экран на этом output → остров уступает игрушке
     readonly property bool fullscreenActive: win.screen
         ? Umbriel.fullscreenFor(win.screen.name) : false
@@ -62,9 +71,9 @@ PanelWindow {
     visible: win.big ? win.isActiveOutput
         : (win.transientHereNow
             || ((win.islandAllScreens || win.isActiveOutput) && !win.fullscreenActive))
-    // Максимальная высота панели: 75% экрана, чтобы высокие страницы (обои,
-    // звук) помещались целиком, а не обрезались прежними жёсткими 652px.
-    readonly property real panelMax: Math.max(360, Math.round((win.screen ? win.screen.height : 1080) * 0.75))
+    // Максимальная высота панели: 82% экрана, чтобы высокие страницы (обои,
+    // настройки, пакеты, диспетчер) помещались свободно.
+    readonly property real panelMax: Math.max(360, Math.round((win.screen ? win.screen.height : 900) * 0.82))
 
     // ── Ключи редизайна острова: barStyle / islandOrder / islandAllScreens ──
     // Теперь живут в Prefs (JsonAdapter); чтение защитное: не «notch» → island,
@@ -154,7 +163,7 @@ PanelWindow {
             id: pill
             x: shadowHost.padH
             y: shadowHost.padTop
-            width: win.big ? Theme.dp(win.panelW) : (idlePill.implicitWidth + Theme.dp(12) * 2)
+            width: win.big ? win.panelW : (idlePill.implicitWidth + Theme.dp(12) * 2)
             height: win.big ? Math.min(contentCol.implicitHeight + Theme.dp(32), win.panelMax) : Math.max(Theme.dp(34), idlePill.implicitHeight + Theme.dp(6))
             // idle — Lucid-пилюля (radiusPill), панель — крупный скруглённый
             // контейнер (radiusXl / shapeXlInc для лончера). Без обводки.
@@ -221,7 +230,7 @@ PanelWindow {
 
         Flickable {
             id: panelView
-            width: Theme.dp(win.panelW) - Theme.dp(32)
+            width: win.panelW - Theme.dp(32)
             height: Math.min(contentCol.implicitHeight, win.panelMax - Theme.dp(32))
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top

@@ -21,11 +21,12 @@ FocusScope {
     property int sel: 0
 
     readonly property real screenAvailHeight: Screen.desktopAvailableHeight > 0
-        ? Screen.desktopAvailableHeight : Screen.height
-    // Island caps its content view at 75% of the output; reserve room for the
+        ? Screen.desktopAvailableHeight : (Screen.height > 0 ? Screen.height : 900)
+    readonly property real screenH: launcher.screenAvailHeight
+    // Island caps its content view at 82% of the output; reserve room for the
     // launcher header, search field, card padding, and a small safety margin.
-    readonly property int workspaceHeight: Math.max(Theme.dp(180),
-        Math.min(Theme.dp(440), launcher.screenAvailHeight * 0.75 - Theme.dp(152)))
+    readonly property int workspaceHeight: Math.max(Theme.dp(240),
+        Math.min(Theme.dp(520), Math.round(screenH * 0.78) - Theme.dp(140)))
     // Переключение вкладок не меняет эту высоту; раскрытие/сворачивание острова
     // уже плавно анимирует pill.height в Island.qml через motion-токены Theme.
 
