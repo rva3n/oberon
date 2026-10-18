@@ -46,10 +46,10 @@ Item {
     width: icon.size
     height: icon.size
 
-    // В 1:1 GeometryRenderer рисует напрямую; слой нужен только при масштабе,
-    // где он сглаживает фильтрацию и даёт текстуру нужного разрешения.
-    layer.enabled: icon.paths !== null && icon.width > 0 && icon.height > 0 && Math.abs(icon._scale - 1) > 0.001
-    layer.samples: 4
+    // CurveRenderer рвёт глифы на малых размерах там, где угол встречает ребро,
+    // поэтому рисуем через мультисэмплированный слой (без него на 1:1 — лесенки)
+    layer.enabled: icon.paths !== null && icon.width > 0 && icon.height > 0
+    layer.samples: 8
     // 1:1 попадает в пиксельную сетку, всё масштабированное — фильтруется
     layer.smooth: Math.abs(icon._scale - 1) > 0.001
     layer.textureSize: icon._zoom === 1 ? Qt.size(0, 0) : Qt.size(Math.ceil(icon.width * icon._zoom * Screen.devicePixelRatio), Math.ceil(icon.height * icon._zoom * Screen.devicePixelRatio))
