@@ -4,11 +4,11 @@ import Quickshell
 import Quickshell.Io
 import "../../core"
 import "../../ui"
+import "../settings"
 import ".."
 
-// Страница «Настройки» — двухколоночный layout в духе Lucid: слева рейл
-// разделов (196dp), справа — содержимое выбранного пункта. Ширину панели (820dp)
-// задаёт Island.
+// Страница «Настройки»: слева группы разделов и поиск, справа — M3-вкладки
+// группы, история переходов, шапка и содержимое выбранного раздела.
 // Внешний вид и погода пишут в Prefs → ~/oberon/prefs.json.
 //
 // Анатомия Lucid: рейл — иконка + подпись, выбранная запись залита
@@ -20,10 +20,12 @@ RowLayout {
     id: page
 
     property var win: null
-    // выбранный раздел: 0 — шелл, 1 — островок, 2 — питание,
-    // 3 — уведомления, 4 — погода, 5 — композитор, 6 — ввод, 7 — экран,
-    // 8 — тема, 9 — ночной свет («Игры» — панельная страница, не раздел)
-    property int section: 0
+    property string sectionId: "look"
+    property string query: ""
+    property var history: ["look"]
+    property int historyAt: 0
+    property bool resetArmed: false
+    property bool resetDone: false
 
     // имя монитора, на котором открыта панель (для раздела «Экран»)
     readonly property string outputName: page.win && page.win.screen ? String(page.win.screen.name) : ""
@@ -35,23 +37,177 @@ RowLayout {
     Layout.minimumHeight: win ? Math.min(Theme.dp(620), win.panelMax - Theme.dp(72)) : Theme.dp(620)
     spacing: Theme.dp(16)
 
-    // при каждом открытии страницы — выбранный раздел (или 0) и свежие настройки Umbriel
+    // При каждом открытии берём id от shell; числовые номера старой версии
+    // остаются совместимыми для IPC/тайлов и старых вызовов.
     onVisibleChanged: if (visible) {
-        page.section = (page.win && page.win.shell && page.win.shell.settingsSection !== undefined)
-            ? page.win.shell.settingsSection : 0;
+        const id = page.sectionIdFor(page.win && page.win.shell ? page.win.shell.settingsSection : "look");
+        page.sectionId = id;
+        page.history = [id];
+        page.historyAt = 0;
+        if (page.win && page.win.shell && page.win.shell.settingsSection !== id)
+            page.win.shell.settingsSection = id;
         page.reloadUmb();
     }
 
     Connections {
         target: page.win ? page.win.shell : null
         function onSettingsSectionChanged() {
-            if (page.visible && page.win && page.win.shell)
-                page.section = page.win.shell.settingsSection;
+            if (page.visible && page.win && page.win.shell) {
+                const id = page.sectionIdFor(page.win.shell.settingsSection);
+                if (id !== page.sectionId)
+                    page.go(id);
+            }
         }
     }
 
-    // смена раздела — подтягиваем актуальные значения из конфигов Umbriel
-    onSectionChanged: page.reloadUmb()
+    // При возврате в «Композитор» перечитываем актуальные значения Umbriel.
+    onSectionIdChanged: if (visible && sectionId === "compositor") page.reloadUmb()
+
+    readonly property var sections: [
+        { id: "bar", title: "Панель и остров", glyph: "widgets", page: "bar",
+          sub: "Состав островка, чипы и их порядок.",
+          keys: "bar island notch pill height width cpu gpu load temperature панель остров островок капсула вырез чипы нагрузка" },
+        { id: "media", title: "Медиа", glyph: "music_note", page: "media",
+          sub: "Вид медиапилюли и оформление текущего трека.",
+          keys: "media player music cover disc звук плеер музыка обложка пластинка" },
+        { id: "clock", title: "Часы и дата", glyph: "schedule", page: "clock",
+          sub: "Формат времени, секунды, день недели и дата.",
+          keys: "clock time date timezone часы дата время секунды 12 24 формат день неделя" },
+        { id: "look", title: "Оформление", glyph: "colors", page: "look",
+          sub: "Палитра, масштаб, поверхности, звуки и виджеты Oberon.",
+          keys: "theme look appearance font size sounds audio widgets оформ оформление тема масштаб скругление цвет насыщенность стекло блюр размытие звук виджеты" },
+        { id: "weather", title: "Погода", glyph: "public", page: "weather",
+          sub: "Автоопределение или ручной выбор города.",
+          keys: "weather temperature city openweather api key celsius fahrenheit погода температура город ключ цельсий фаренгейт" },
+        { id: "motion", title: "Анимация", glyph: "animation", page: "motion",
+          sub: "Насколько быстро оболочка движется — и движется ли вообще.",
+          keys: "animation speed motion анимация скорость движение" },
+        { id: "night", title: "Ночной свет", glyph: "bedtime", page: "night",
+          sub: "Температура экрана, режим и окно времени.",
+          keys: "night light gammastep schedule sunset ночной свет температура режим расписание закат" },
+        { id: "cc", title: "Быстрые настройки", glyph: "tune", page: "cc",
+          sub: "Редактор плиток быстрых настроек.",
+          keys: "quick settings tiles layout wifi bluetooth плитки быстрые панель управления" },
+        { id: "launch", title: "Лаунчер", glyph: "search", page: "launch",
+          sub: "Поиск приложений и источники поиска.",
+          keys: "launcher apps search запуск приложения поиск" },
+        { id: "notif", title: "Уведомления", glyph: "notifications", page: "notif",
+          sub: "Тосты и режим «не беспокоить».",
+          keys: "notifications dnd toast preview timeout уведомления не беспокоить длительность предпросмотр" },
+        { id: "games", title: "Игры", glyph: "sports_esports", page: "games",
+          sub: "Gamescope, Proton, Steam и MangoHud.",
+          keys: "games gamescope proton steam mangohud игры запуск оверлей" },
+        { id: "opencode", title: "OpenCode", glyph: "bolt", page: "opencode",
+          sub: "Лимиты и настройки моделей OpenCode Go.",
+          keys: "opencode go model лимиты модели агенты" },
+        { id: "display", title: "Экран", glyph: "desktop_windows", page: "display",
+          sub: "Разрешение, частота и масштаб подключённого экрана.",
+          keys: "display monitor resolution refresh scale layout placement detect экран монитор разрешение герцовка раскладка расположение" },
+        { id: "input", title: "Ввод", glyph: "keyboard", page: "input",
+          sub: "Мышь, клавиатура, тачпад и фокус Umbriel.",
+          keys: "mouse keyboard layouts xkb pointer cursor sensitivity speed accel input мышь клавиатура раскладки указатель курсор скорость чувствительность разгон" },
+        { id: "lock", title: "Экран блокировки", glyph: "lock", page: "lock",
+          sub: "Блокировка и действия при бездействии.",
+          keys: "lock screen blur idle блокировка экран размытие безопасность" },
+        { id: "system", title: "Система", glyph: "settings", page: "system",
+          sub: "Сброс пользовательских настроек Oberon.",
+          keys: "about system reset defaults система сброс настройки по умолчанию" },
+        { id: "power", title: "Питание", glyph: "power", page: "power",
+          sub: "Что и когда делать при бездействии.",
+          keys: "power idle suspend lock screen питание бездействие сон блокировка экран" },
+        { id: "compositor", title: "Композитор", glyph: "dashboard", page: "compositor",
+          sub: "Окна, раскладка, анимации и эффекты Umbriel.",
+          keys: "compositor umbriel windows layout animation effects композитор окна раскладка анимации эффекты" },
+        { id: "updates", title: "Обновления", glyph: "update", page: "updates",
+          sub: "Проверка и установка компонентов Oberon.",
+          keys: "updates update repository обновления обновить версии репозиторий" }
+    ]
+
+    readonly property var groups: [
+        { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "media", "clock"] },
+        { id: "appearance", title: "Оформление", glyph: "colors", pages: ["look", "weather", "motion", "night"] },
+        { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "games", "opencode"] },
+        { id: "devices", title: "Устройства", glyph: "desktop_windows", pages: ["display", "input"] },
+        { id: "security", title: "Безопасность", glyph: "lock", pages: ["lock"] },
+        { id: "system", title: "Система", glyph: "settings", pages: ["system", "power", "compositor", "updates"] }
+    ]
+
+    function sectionIdFor(value) {
+        const legacy = ["look", "bar", "power", "notif", "weather", "compositor", "input", "display", "look", "night"];
+        const id = String(value === undefined || value === null || value === "" ? "look" : value);
+        if (/^\d+$/.test(id))
+            return legacy[Number(id)] || "look";
+        for (let i = 0; i < page.sections.length; i++)
+            if (page.sections[i].id === id) return id;
+        return "look";
+    }
+    function sectionForId(id) {
+        for (let i = 0; i < page.sections.length; i++)
+            if (page.sections[i].id === id) return page.sections[i];
+        return null;
+    }
+    function groupForPage(id) {
+        for (let i = 0; i < page.groups.length; i++)
+            if (page.groups[i].pages.indexOf(id) >= 0) return page.groups[i];
+        return page.groups[0];
+    }
+    function pagesForGroup(group) {
+        const result = [];
+        for (let i = 0; i < group.pages.length; i++) {
+            const section = page.sectionForId(group.pages[i]);
+            if (section) result.push({ key: section.id, label: section.title });
+        }
+        return result;
+    }
+    function matches(section) {
+        if (!section) return false;
+        const q = page.query.trim().toLowerCase();
+        if (q === "") return true;
+        return String(section.title).toLowerCase().indexOf(q) >= 0
+            || String(section.keys).toLowerCase().indexOf(q) >= 0;
+    }
+    function groupMatches(group) {
+        if (page.query.trim() === "") return true;
+        for (let i = 0; i < group.pages.length; i++)
+            if (page.matches(page.sectionForId(group.pages[i]))) return true;
+        return false;
+    }
+    function go(id) {
+        const next = page.sectionIdFor(id);
+        if (next === page.sectionId) return;
+        const nextHistory = page.history.slice(0, page.historyAt + 1);
+        nextHistory.push(next);
+        page.history = nextHistory;
+        page.historyAt = nextHistory.length - 1;
+        page.sectionId = next;
+        if (page.win && page.win.shell && page.win.shell.settingsSection !== next)
+            page.win.shell.settingsSection = next;
+    }
+    function goGroup(group) {
+        for (let i = 0; i < group.pages.length; i++) {
+            const id = group.pages[i];
+            if (page.matches(page.sectionForId(id))) { page.go(id); return; }
+        }
+        if (group.pages.length) page.go(group.pages[0]);
+    }
+    function goToFirstMatch() {
+        for (let i = 0; i < page.sections.length; i++)
+            if (page.matches(page.sections[i])) { page.go(page.sections[i].id); return; }
+    }
+    function moveHistory(delta) {
+        const next = page.historyAt + delta;
+        if (next < 0 || next >= page.history.length) return;
+        page.historyAt = next;
+        page.sectionId = page.history[next];
+        if (page.win && page.win.shell && page.win.shell.settingsSection !== page.sectionId)
+            page.win.shell.settingsSection = page.sectionId;
+    }
+
+    readonly property var section: page.sectionForId(page.sectionId) || page.sections[0]
+    readonly property var activeGroup: page.groupForPage(page.sectionId)
+    readonly property var groupPages: page.pagesForGroup(page.activeGroup)
+    readonly property bool canBack: page.historyAt > 0
+    readonly property bool canForward: page.historyAt < page.history.length - 1
 
     // однократное чтение настроек Umbriel (один JSON в строке)
     Process {
@@ -197,6 +353,7 @@ RowLayout {
         Layout.fillWidth: true
         Layout.bottomMargin: Theme.dp(4)
         spacing: Theme.dp(2)
+        visible: false
 
         LText {
             Layout.fillWidth: true
@@ -291,150 +448,25 @@ RowLayout {
     // строка параметра: подпись + значение справа, ниже слайдер min..max.
     // Число — tabular, значение выровнено вправо. Слайдер работает в реальных
     // единицах (from/to); committed отдаёт уже готовое значение.
-    component ParamRow: ColumnLayout {
-        id: pr
-
-        property string label: ""
-        property string sub: ""
+    component ParamRow: SSlider {
         property real min: 0
         property real max: 1
-        property real value: 1
-        // формат подписи справа: value * displayMul + suffix
         property real displayMul: 100
-        property string suffix: "%"
-        readonly property string readout: Math.round(pr.value * pr.displayMul) + pr.suffix
-
-        signal committed(real v)
-
-        Layout.fillWidth: true
-        Layout.topMargin: Theme.dp(4)
-        Layout.bottomMargin: Theme.dp(4)
-        spacing: Theme.dp(6)
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.dp(8)
-
-            LText {
-                Layout.fillWidth: true
-                text: pr.label
-                role: "bodyLarge"
-                weight: 480
-                color: Theme.text
-                elide: Text.ElideRight
-            }
-
-            LText {
-                text: pr.readout
-                role: "labelLarge"
-                tabular: true
-                color: Theme.subtext
-            }
-        }
-
-        Slider {
-            Layout.fillWidth: true
-            size: "s"
-            from: pr.min
-            to: pr.max
-            value: pr.value
-            onCommitted: (v) => pr.committed(v)
-        }
-
-        LText {
-            Layout.fillWidth: true
-            visible: pr.sub !== ""
-            text: pr.sub
-            role: "bodySmall"
-            color: Theme.subtextDim
-            wrapMode: Text.WordWrap
-        }
+        from: min
+        to: max
+        suffix: "%"
+        valueText: (v) => Math.round(v * displayMul) + suffix
     }
 
     // строка выбора из набора значений. До 4 вариантов — связанная группа
     // ButtonGroup (выбранный сегмент primary); больше — Chip-потоком, чтобы
     // подписи не сжимались. committed отдаёт выбранный ключ.
-    component ChoiceRow: ColumnLayout {
-        id: cr
-
-        property string label: ""
-        property string sub: ""
-        property var values: []
-        property var labels: []
-        property var value: 0
-
-        readonly property var opts: {
-            var a = [];
-            for (var i = 0; i < cr.values.length; i++)
-                a.push({ key: cr.values[i], label: cr.labels[i] !== undefined ? cr.labels[i] : String(cr.values[i]) });
-            return a;
-        }
-        readonly property bool useChips: cr.values.length > 4
-
-        signal committed(var v)
-
-        Layout.fillWidth: true
-        Layout.topMargin: Theme.dp(4)
-        Layout.bottomMargin: Theme.dp(4)
-        spacing: Theme.dp(8)
-
-        LText {
-            Layout.fillWidth: true
-            text: cr.label
-            role: "bodyLarge"
-            weight: 480
-            color: Theme.text
-            elide: Text.ElideRight
-        }
-
-        ButtonGroup {
-            visible: !cr.useChips
-            Layout.fillWidth: true
-            options: cr.opts
-            current: cr.value
-            equalWidth: true
-            size: "s"
-            onPicked: (k) => cr.committed(k)
-        }
-
-        Flow {
-            id: chipFlow
-
-            visible: cr.useChips
-            Layout.fillWidth: true
-            // страховка, если позиционер ещё не посчитал высоту укладки
-            Layout.preferredHeight: Math.max(Theme.dp(30), chipFlow.implicitHeight)
-            spacing: Theme.dp(6)
-
-            Repeater {
-                model: cr.opts
-
-                Chip {
-                    required property var modelData
-                    text: modelData.label
-                    selected: cr.value === modelData.key
-                    onClicked: cr.committed(modelData.key)
-                }
-            }
-        }
-
-        LText {
-            Layout.fillWidth: true
-            visible: cr.sub !== ""
-            text: cr.sub
-            role: "bodySmall"
-            color: Theme.subtextDim
-            wrapMode: Text.WordWrap
-        }
-    }
+    component ChoiceRow: SSelect {}
 
     // мелкая подпись-подгруппа внутри карточки (воздух вместо дивайдера)
-    component GroupCaption: LText {
+    component GroupCaption: SLabel {
         Layout.fillWidth: true
         Layout.topMargin: Theme.dp(8)
-        role: "labelLarge"
-        weight: 560
-        color: Theme.subtext
         elide: Text.ElideRight
     }
 
@@ -468,85 +500,48 @@ RowLayout {
 
         Layout.alignment: Qt.AlignTop
         Layout.preferredWidth: Theme.dp(196)
-        spacing: Theme.dp(4)
+        Layout.minimumWidth: Theme.dp(196)
+        Layout.maximumWidth: Theme.dp(196)
+        Layout.fillHeight: true
+        spacing: Theme.dp(8)
 
-        NavItem {
-            icon: "tune"
-            label: "Шелл"
-            selected: page.section === 0
-            onClicked: page.section = 0
+        TextField {
+            id: searchInput
+
+            Layout.fillWidth: true
+            variant: "search"
+            icon: "search"
+            placeholder: "Поиск настроек"
+            text: page.query
+            onTextEdited: page.query = text
+            onAccepted: page.goToFirstMatch()
+            onEscaped: {
+                page.query = "";
+                searchInput.text = "";
+            }
         }
-        NavItem {
-            icon: "colors"
-            label: "Тема"
-            selected: page.section === 8
-            onClicked: page.section = 8
-        }
-        NavItem {
-            icon: "widgets"
-            label: "Островок"
-            selected: page.section === 1
-            onClicked: page.section = 1
-        }
-        NavItem {
-            icon: "power"
-            label: "Питание"
-            selected: page.section === 2
-            onClicked: page.section = 2
-        }
-        NavItem {
-            icon: "notifications"
-            label: "Уведомления"
-            selected: page.section === 3
-            onClicked: page.section = 3
-        }
-        NavItem {
-            icon: "sunny"
-            label: "Погода"
-            selected: page.section === 4
-            onClicked: page.section = 4
-        }
-        NavItem {
-            icon: "bedtime"
-            label: "Ночной свет"
-            selected: page.section === 9
-            onClicked: page.section = 9
-        }
-        NavItem {
-            icon: "dashboard"
-            label: "Композитор"
-            selected: page.section === 5
-            onClicked: page.section = 5
-        }
-        NavItem {
-            icon: "keyboard"
-            label: "Ввод"
-            selected: page.section === 6
-            onClicked: page.section = 6
-        }
-        NavItem {
-            icon: "desktop_windows"
-            label: "Экран"
-            selected: page.section === 7
-            onClicked: page.section = 7
-        }
-        NavItem {
-            icon: "sports_esports"
-            label: "Игры"
-            selected: false
-            onClicked: { if (page.win && page.win.shell) page.win.shell.setPage("games") }
-        }
-        NavItem {
-            icon: "bolt"
-            label: "OpenCode"
-            selected: false
-            onClicked: { if (page.win && page.win.shell) page.win.shell.setPage("opencode") }
-        }
-        NavItem {
-            icon: "update"
-            label: "Обновления"
-            selected: false
-            onClicked: { if (page.win && page.win.shell) page.win.shell.setPage("updates") }
+
+        ListView {
+            id: groupList
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: Theme.dp(4)
+            model: page.groups
+
+            delegate: NavItem {
+                required property var modelData
+                readonly property bool shown: page.groupMatches(modelData)
+
+                width: groupList.width
+                height: shown ? implicitHeight : 0
+                visible: shown
+                icon: modelData.glyph
+                label: modelData.title
+                selected: page.activeGroup.id === modelData.id
+                onClicked: page.goGroup(modelData)
+            }
         }
     }
 
@@ -556,9 +551,54 @@ RowLayout {
         Layout.alignment: Qt.AlignTop
         spacing: Theme.dp(12)
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.dp(6)
+
+            IconButton {
+                icon: "arrow_back"
+                tooltip: "Назад"
+                disabled: !page.canBack
+                onClicked: page.moveHistory(-1)
+            }
+            IconButton {
+                icon: "arrow_forward"
+                tooltip: "Вперёд"
+                disabled: !page.canForward
+                onClicked: page.moveHistory(1)
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        Flow {
+            id: tabsFlow
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(Theme.dp(30), tabsFlow.implicitHeight)
+            spacing: Theme.dp(6)
+
+            Repeater {
+                model: page.groupPages
+
+                Chip {
+                    required property var modelData
+                    size: "sm"
+                    text: modelData.label
+                    selected: page.sectionId === modelData.key
+                    onClicked: page.go(modelData.key)
+                }
+            }
+        }
+
+        SHeader {
+            glyph: page.section.glyph
+            title: page.section.title
+            sub: page.section.sub
+        }
+
         // 0. Шелл (интерфейс)
         ColumnLayout {
-            visible: page.section === 0
+            visible: page.sectionId === "look"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -587,17 +627,10 @@ RowLayout {
                 }
             }
 
-            Card { // движение и цвет
+            Card { // цвет и поверхности
                 Layout.fillWidth: true
-                title: "Движение и цвет"
+                title: "Цвет и поверхности"
 
-                ParamRow {
-                    label: "Скорость анимаций"
-                    min: 0.5
-                    max: 1.5
-                    value: Prefs.motionScale
-                    onCommitted: (v) => Prefs.set("motionScale", v)
-                }
                 ParamRow {
                     label: "Насыщенность акцента"
                     min: 0.5
@@ -709,7 +742,7 @@ RowLayout {
 
         // 8. Тема (материал-палитра из обоев)
         ColumnLayout {
-            visible: page.section === 8
+            visible: page.sectionId === "look"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -791,7 +824,7 @@ RowLayout {
 
         // 1. Островок
         ColumnLayout {
-            visible: page.section === 1
+            visible: page.sectionId === "bar"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -812,11 +845,6 @@ RowLayout {
                     label: "Показывать погоду"
                     checked: Prefs.islandWeather
                     onToggled: (v) => Prefs.set("islandWeather", v)
-                }
-                ToggleRow {
-                    label: "Секунды в часах"
-                    checked: Prefs.clockSeconds
-                    onToggled: (v) => Prefs.set("clockSeconds", v)
                 }
                 ToggleRow {
                     label: "Показывать часы"
@@ -860,14 +888,6 @@ RowLayout {
                     onCommitted: (v) => Prefs.set("barStyle", v)
                 }
 
-                ChoiceRow {
-                    label: "Медиапилюля"
-                    values: ["cover", "disc"]
-                    labels: ["Обложка", "Пластинка"]
-                    value: Prefs.mediaStyle
-                    sub: "Чем показать трек: обложкой или крутящейся пластинкой."
-                    onCommitted: (v) => Prefs.set("mediaStyle", v)
-                }
             }
 
             Card { // порядок чипов (islandOrder: kb/weather/ws/clock/tray)
@@ -945,7 +965,7 @@ RowLayout {
 
         // 2. Питание
         ColumnLayout {
-            visible: page.section === 2
+            visible: page.sectionId === "power"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -992,7 +1012,7 @@ RowLayout {
 
         // 3. Уведомления
         ColumnLayout {
-            visible: page.section === 3
+            visible: page.sectionId === "notif"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -1047,12 +1067,40 @@ RowLayout {
                     suffix: " сек"
                     onCommitted: (v) => Prefs.set("toastSeconds", Math.round(v))
                 }
+
+                ChoiceRow {
+                    label: "Таймаут уведомления"
+                    values: [3, 5, 8, 10]
+                    labels: ["3 сек", "5 сек", "8 сек", "10 сек"]
+                    value: Prefs.notifTimeout
+                    onCommitted: (v) => Prefs.set("notifTimeout", v)
+                }
+                ChoiceRow {
+                    label: "Таймаут критического уведомления"
+                    values: [0, 5, 10, 15]
+                    labels: ["Не скрывать", "5 сек", "10 сек", "15 сек"]
+                    value: Prefs.notifCritTimeout
+                    onCommitted: (v) => Prefs.set("notifCritTimeout", v)
+                }
+                ToggleRow {
+                    label: "Предпросмотр текста"
+                    sub: "Предпочтение сохраняется; скрытие тела уведомления будет подключено в следующей волне."
+                    checked: Prefs.notifPreview
+                    onToggled: (v) => Prefs.set("notifPreview", v)
+                }
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtextDim
+                    wrapMode: Text.WordWrap
+                    text: "Таймауты для стандартных и критических уведомлений сохраняются в Prefs; их применение к серверу уведомлений будет подключено отдельно. Длительность тоста выше работает как прежде."
+                }
             }
         }
 
         // 4. Погода
         ColumnLayout {
-            visible: page.section === 4
+            visible: page.sectionId === "weather"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -1158,7 +1206,7 @@ RowLayout {
 
         // 9. Ночной свет (gammastep: темп / режим / расписание)
         ColumnLayout {
-            visible: page.section === 9
+            visible: page.sectionId === "night"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -1236,7 +1284,7 @@ RowLayout {
         // Прокрутку длинного раздела ведёт внешний Flickable в Island.qml:
         // вложенный Flickable не имеет implicitHeight и схлопывал страницу в 0
         ColumnLayout {
-            visible: page.section === 5
+            visible: page.sectionId === "compositor"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -1715,7 +1763,7 @@ RowLayout {
 
         // 6. Ввод (мышь, клавиатура, фокус Umbriel)
         ColumnLayout {
-            visible: page.section === 6
+            visible: page.sectionId === "input"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -1892,7 +1940,7 @@ RowLayout {
 
         // 7. Экран (монитор этого окна)
         ColumnLayout {
-            visible: page.section === 7
+            visible: page.sectionId === "display"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
 
@@ -2048,6 +2096,253 @@ RowLayout {
                     }
                 }
             }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "media"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Медиапилюля"
+
+                ChoiceRow {
+                    label: "Стиль обложки"
+                    values: ["cover", "disc"]
+                    labels: ["Обложка", "Пластинка"]
+                    value: Prefs.mediaStyle
+                    sub: "Чем показать текущий трек в медиапилюле."
+                    onCommitted: (v) => Prefs.set("mediaStyle", v)
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "clock"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Время"
+
+                SToggle {
+                    label: "Секунды в часах"
+                    checked: Prefs.clockSeconds
+                    onToggled: (v) => Prefs.set("clockSeconds", v)
+                }
+                ChoiceRow {
+                    label: "Формат времени"
+                    values: [false, true]
+                    labels: ["24 часа", "12 часов"]
+                    value: Prefs.clock12
+                    onCommitted: (v) => Prefs.set("clock12", v)
+                }
+            }
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Дата"
+
+                SToggle {
+                    label: "Показывать день недели"
+                    checked: Prefs.clockWeekday
+                    onToggled: (v) => Prefs.set("clockWeekday", v)
+                }
+                SPick {
+                    label: "Формат даты"
+                    options: [
+                        { key: "d MMMM", label: "d MMMM · 18 октября" },
+                        { key: "d MMM", label: "d MMM · 18 окт." },
+                        { key: "dd.MM.yyyy", label: "dd.MM.yyyy · 18.10.2026" },
+                        { key: "yyyy-MM-dd", label: "yyyy-MM-dd · 2026-10-18" }
+                    ]
+                    value: Prefs.clockDateFmt
+                    onPicked: (v) => Prefs.set("clockDateFmt", v)
+                }
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtextDim
+                    text: "Формат даты и 12/24-часовой режим применяются к часам островка и шапке панели."
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "motion"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Анимация Oberon"
+
+                ParamRow {
+                    label: "Скорость анимаций"
+                    min: 0.5
+                    max: 1.5
+                    value: Prefs.motionScale
+                    onCommitted: (v) => Prefs.set("motionScale", v)
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "system"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Сброс настроек"
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtext
+                    wrapMode: Text.WordWrap
+                    text: "Вернуть все параметры Oberon к значениям по умолчанию. Действие нужно подтвердить повторным нажатием."
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.dp(8)
+
+                    SButton {
+                        danger: true
+                        variant: page.resetArmed ? "filled" : "outlined"
+                        icon: page.resetArmed ? "warning" : "restart_alt"
+                        text: page.resetDone ? "Настройки сброшены"
+                            : (page.resetArmed ? "Подтвердить сброс" : "Сбросить настройки")
+                        disabled: page.resetDone
+                        onClicked: {
+                            if (!page.resetArmed) {
+                                page.resetArmed = true;
+                                resetArmTimer.restart();
+                                return;
+                            }
+                            Prefs.reset();
+                            page.applyIdle();
+                            Quickshell.execDetached(["sh", Quickshell.env("HOME") + "/oberon/scripts/set-blur.sh", String(Prefs.blurAmount)]);
+                            Quickshell.execDetached(["sh", Quickshell.env("HOME") + "/oberon/scripts/apply-mangohud.sh"]);
+                            page.scheduleThemeApply();
+                            page.resetArmed = false;
+                            page.resetDone = true;
+                            resetDoneTimer.restart();
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+                }
+
+                LText {
+                    Layout.fillWidth: true
+                    visible: page.resetArmed
+                    role: "bodySmall"
+                    color: Theme.error
+                    text: "Нажмите ещё раз в течение трёх секунд."
+                }
+                LText {
+                    Layout.fillWidth: true
+                    visible: page.resetDone
+                    role: "bodySmall"
+                    color: Theme.success
+                    text: "Значения по умолчанию сохранены в prefs.json."
+                }
+
+                Timer {
+                    id: resetArmTimer
+                    interval: 3000
+                    onTriggered: page.resetArmed = false
+                }
+                Timer {
+                    id: resetDoneTimer
+                    interval: 2500
+                    onTriggered: page.resetDone = false
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "cc"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Быстрые настройки"
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtext
+                    wrapMode: Text.WordWrap
+                    text: "Плитки уже можно переставлять и скрывать: откройте главную панель и нажмите карандаш. Перетаскивание и настройка раскладки внутри этого раздела — следующая волна."
+                }
+                SButton {
+                    text: "Открыть быстрые настройки"
+                    icon: "tune"
+                    variant: "tonal"
+                    onClicked: if (page.win && page.win.shell) page.win.shell.setPage("")
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "launch"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Лаунчер"
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtext
+                    wrapMode: Text.WordWrap
+                    text: "В текущих настройках Oberon параметры поиска приложений не хранились в Prefs. Этот раздел оставлен в реестре для будущих настроек лаунчера."
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "lock"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Экран блокировки"
+
+                LText {
+                    Layout.fillWidth: true
+                    role: "bodySmall"
+                    color: Theme.subtext
+                    wrapMode: Text.WordWrap
+                    text: "Время автоматической блокировки настраивается в разделе «Питание». Отдельных параметров экрана блокировки в старой странице настроек не было."
+                }
+            }
+        }
+
+        GamesPage {
+            visible: page.sectionId === "games"
+            Layout.fillWidth: true
+            win: page.win
+        }
+        OpenCodePage {
+            visible: page.sectionId === "opencode"
+            Layout.fillWidth: true
+            win: page.win
+        }
+        UpdatesPage {
+            visible: page.sectionId === "updates"
+            Layout.fillWidth: true
+            win: page.win
         }
     }
 

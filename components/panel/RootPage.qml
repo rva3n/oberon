@@ -223,13 +223,13 @@ ColumnLayout {
             rootPage.win.shell.setPage("bluetooth");
             break;
         case "dnd":
-            rootPage.win.shell.setPage("settings", 3);
+            rootPage.win.shell.setPage("settings", "notif");
             break;
         case "nightlight":
-            rootPage.win.shell.setPage("settings", 9);
+            rootPage.win.shell.setPage("settings", "night");
             break;
         case "darkmode":
-            rootPage.win.shell.setPage("settings", 8);
+            rootPage.win.shell.setPage("settings", "look");
             break;
         case "timers":
             rootPage.win.shell.setPage("timers");

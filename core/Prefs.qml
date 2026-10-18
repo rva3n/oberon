@@ -31,7 +31,13 @@ Singleton {
         islandTray: true,
         islandGo: true,
         clockSeconds: true,
+        clock12: false,
+        clockWeekday: true,
+        clockDateFmt: "d MMMM",
         toastSeconds: 5,
+        notifTimeout: 5,
+        notifCritTimeout: 0,
+        notifPreview: true,
         weatherAuto: true,
         weatherCity: "",
         weatherLat: 0,
@@ -127,7 +133,13 @@ Singleton {
             property bool islandTray: true
             property bool islandGo: true
             property bool clockSeconds: true
+            property bool clock12: false
+            property bool clockWeekday: true
+            property string clockDateFmt: "d MMMM"
             property int toastSeconds: 5
+            property int notifTimeout: 5
+            property int notifCritTimeout: 0
+            property bool notifPreview: true
             property bool weatherAuto: true
             property string weatherCity: ""
             property real weatherLat: 0
@@ -215,7 +227,13 @@ Singleton {
     readonly property bool islandTray: a.islandTray
     readonly property bool islandGo: a.islandGo
     readonly property bool clockSeconds: a.clockSeconds
+    readonly property bool clock12: a.clock12
+    readonly property bool clockWeekday: a.clockWeekday
+    readonly property string clockDateFmt: a.clockDateFmt
     readonly property int toastSeconds: a.toastSeconds
+    readonly property int notifTimeout: a.notifTimeout
+    readonly property int notifCritTimeout: a.notifCritTimeout
+    readonly property bool notifPreview: a.notifPreview
     readonly property bool weatherAuto: a.weatherAuto
     readonly property string weatherCity: a.weatherCity
     readonly property real weatherLat: a.weatherLat
@@ -288,14 +306,25 @@ Singleton {
     // их неопределёнными — иначе ловим "Unable to assign [undefined] to bool".
     function fillMissingDefaults() {
         const d = JSON.parse(p.defaultsJson);
+        // Сверяемся с фактическим JSON: свойства адаптера отдают дефолт из QML,
+        // поэтому a[k] === undefined не ловит отсутствующий ключ.
+        let cur = {};
+        try { cur = JSON.parse(file.text() || "{}"); } catch (e) { cur = {}; }
         let fixed = false;
         for (const k of Object.keys(d)) {
-            if (a[k] === undefined) {
+            if (!(k in cur)) {
                 a[k] = d[k];
                 fixed = true;
             }
         }
         if (fixed) file.writeAdapter();
+    }
+
+    function reset() {
+        const d = JSON.parse(p.defaultsJson);
+        for (const k of Object.keys(d))
+            a[k] = d[k];
+        saveTimer.restart();
     }
 
     // Установить значение (ключ = имя свойства адаптера) и сохранить файл с debounce.

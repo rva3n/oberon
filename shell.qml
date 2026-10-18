@@ -14,7 +14,7 @@ ShellRoot {
 
     property string view: "idle"   // idle | panel | launcher | taskman | tray
     property string panelPage: ""
-    property int settingsSection: 0
+    property string settingsSection: "look"
     property bool widgetsEditing: false
     property string launcherTab: "apps"    // apps | clipboard | emoji | packages (вкладки лончера)
     property int taskmanTab: 0             // вкладка диспетчера (0/1/2)
@@ -221,9 +221,20 @@ ShellRoot {
     }
 
     function lock()           { root.view = "idle"; root.panelPage = ""; Quickshell.execDetached(["umbriel", "msg", "dpms-on"]); root.locked = true; }
+    readonly property var legacySettingsSections: [
+        "look", "bar", "power", "notif", "weather", "compositor", "input", "display", "look", "night"
+    ]
+    function settingsSectionId(section) {
+        if (section === undefined || section === null || section === "")
+            return "look";
+        const value = String(section);
+        if (/^\d+$/.test(value))
+            return root.legacySettingsSections[Number(value)] || "look";
+        return value;
+    }
     function setPage(p, sec)  {
         if (p === "settings")
-            root.settingsSection = (sec !== undefined ? sec : 0);
+            root.settingsSection = root.settingsSectionId(sec);
         root.view = "panel";
         root.panelPage = p;
     }

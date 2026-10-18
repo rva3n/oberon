@@ -237,7 +237,9 @@ Item {
                 rounded: 100
                 tabular: true
                 color: Theme.fgAccent
-                text: Qt.formatDateTime(holder.now, Prefs.clockSeconds ? "HH:mm:ss" : "HH:mm")
+                text: Qt.formatDateTime(holder.now, Prefs.clock12
+                    ? (Prefs.clockSeconds ? "h:mm:ss AP" : "h:mm AP")
+                    : (Prefs.clockSeconds ? "HH:mm:ss" : "HH:mm"))
             }
         }
     }

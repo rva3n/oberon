@@ -275,12 +275,13 @@ PanelWindow {
                 LText {
                     role: "titleMedium"
                     color: Theme.text
-                    text: Qt.formatDateTime(win.now, "HH:mm")
+                    text: Qt.formatDateTime(win.now, Prefs.clock12 ? "h:mm AP" : "HH:mm")
                 }
                 LText {
                     role: "bodySmall"
                     color: Theme.subtext
-                    text: win.now.toLocaleDateString(Qt.locale("ru_RU"), "dddd, d MMMM")
+                    text: win.now.toLocaleDateString(Qt.locale("ru_RU"),
+                        Prefs.clockWeekday ? "dddd, " + Prefs.clockDateFmt : Prefs.clockDateFmt)
                 }
             }
             LText {

@@ -1,0 +1,9 @@
+module qs.components.settings
+SCard 1.0 SCard.qml
+SLabel 1.0 SLabel.qml
+SToggle 1.0 SToggle.qml
+SSlider 1.0 SSlider.qml
+SSelect 1.0 SSelect.qml
+SPick 1.0 SPick.qml
+SButton 1.0 SButton.qml
+SHeader 1.0 SHeader.qml
