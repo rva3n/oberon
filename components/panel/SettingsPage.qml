@@ -26,6 +26,8 @@ RowLayout {
     property int historyAt: 0
     property bool resetArmed: false
     property bool resetDone: false
+    property var machineInfo: ({})
+    property bool systemInfoCopied: false
 
     // имя монитора, на котором открыта панель (для раздела «Экран»)
     readonly property string outputName: page.win && page.win.screen ? String(page.win.screen.name) : ""
@@ -35,6 +37,12 @@ RowLayout {
     property var outputs: []
     property string outputsBuffer: ""
     property string outputsError: ""
+    readonly property var rootDisk: {
+        const disks = SysStats.disks || [];
+        for (let i = 0; i < disks.length; i++)
+            if (String(disks[i].mount) === "/") return disks[i];
+        return null;
+    }
 
     visible: win !== null && win.mode === "panel" && win.page === "settings"
     Layout.fillWidth: true
@@ -43,15 +51,19 @@ RowLayout {
 
     // При каждом открытии берём id от shell; числовые номера старой версии
     // остаются совместимыми для IPC/тайлов и старых вызовов.
-    onVisibleChanged: if (visible) {
-        const id = page.sectionIdFor(page.win && page.win.shell ? page.win.shell.settingsSection : "look");
-        page.sectionId = id;
-        page.history = [id];
-        page.historyAt = 0;
-        if (page.win && page.win.shell && page.win.shell.settingsSection !== id)
-            page.win.shell.settingsSection = id;
-        page.reloadUmb();
-        page.reloadOutputs();
+    onVisibleChanged: {
+        if (visible) {
+            const id = page.sectionIdFor(page.win && page.win.shell ? page.win.shell.settingsSection : "look");
+            page.sectionId = id;
+            page.history = [id];
+            page.historyAt = 0;
+            if (page.win && page.win.shell && page.win.shell.settingsSection !== id)
+                page.win.shell.settingsSection = id;
+            page.reloadUmb();
+            if (id === "display")
+                page.reloadOutputs();
+        }
+        page.syncSystemSection();
     }
 
     Connections {
@@ -66,11 +78,14 @@ RowLayout {
     }
 
     // При входе в разделы Umbriel перечитываем актуальные значения.
-    onSectionIdChanged: if (visible) {
-        if (sectionId === "compositor" || sectionId === "display" || sectionId === "input")
-            page.reloadUmb();
-        if (sectionId === "display")
-            page.reloadOutputs();
+    onSectionIdChanged: {
+        page.syncSystemSection();
+        if (visible) {
+            if (sectionId === "compositor" || sectionId === "display" || sectionId === "input")
+                page.reloadUmb();
+            if (sectionId === "display")
+                page.reloadOutputs();
+        }
     }
 
     readonly property var sections: [
@@ -216,6 +231,121 @@ RowLayout {
             page.win.shell.settingsSection = page.sectionId;
     }
 
+    function syncSystemSection() {
+        const active = page.visible && page.sectionId === "system";
+        SysStats.settingsActive = active;
+        if (active) {
+            page.refreshMachineInfo();
+            machineRefreshTimer.start();
+        } else {
+            machineRefreshTimer.stop();
+        }
+    }
+
+    function refreshMachineInfo() {
+        if (!page.visible || page.sectionId !== "system" || machineProc.running)
+            return;
+        machineProc.running = true;
+    }
+
+    function parseMachineLine(line) {
+        const text = String(line);
+        const separator = text.indexOf(" ");
+        if (separator < 1)
+            return;
+        const fields = ({
+            "OS": "os",
+            "KERNEL": "kernel",
+            "COMPOSITOR": "compositor",
+            "CPU": "cpu",
+            "GPU": "gpu",
+            "HOST": "host"
+        });
+        const field = fields[text.slice(0, separator)];
+        if (!field)
+            return;
+        const next = {};
+        for (const key in page.machineInfo)
+            next[key] = page.machineInfo[key];
+        next[field] = text.slice(separator + 1).trim();
+        page.machineInfo = next;
+    }
+
+    function machineValue(key, fallback) {
+        const current = page.machineInfo && page.machineInfo[key] !== undefined
+            ? String(page.machineInfo[key]).trim() : "";
+        if (current !== "")
+            return current;
+        const backup = fallback === undefined || fallback === null ? "" : String(fallback).trim();
+        return backup !== "" ? backup : "Не определено";
+    }
+
+    function percentText(fraction) {
+        const value = Number(fraction);
+        return Math.round(Math.max(0, Math.min(1, isFinite(value) ? value : 0)) * 100) + "%";
+    }
+
+    function temperatureText(value) {
+        const temp = Number(value);
+        return isFinite(temp) && temp >= 0 ? Math.round(temp) + " °C" : "Недоступна";
+    }
+
+    function usageText(used, total, fraction) {
+        if (!(Number(total) > 0))
+            return "Нет данных";
+        return SysStats.formatBytes(used) + " / " + SysStats.formatBytes(total)
+            + " · " + page.percentText(fraction);
+    }
+
+    function rootDiskUsageText() {
+        const disk = page.rootDisk;
+        return disk ? page.usageText(disk.used, disk.total, Number(disk.used) / Number(disk.total))
+                    : "Нет данных";
+    }
+
+    function systemInfoText() {
+        const disk = page.rootDisk;
+        const gpuPower = Number(SysStats.gpuPowerW) > 0
+            ? Number(SysStats.gpuPowerW).toFixed(1) + " Вт" : "Недоступно";
+        return [
+            "Машина",
+            "ОС: " + page.machineValue("os", SysStats.distro),
+            "Ядро: " + page.machineValue("kernel", SysStats.kernel),
+            "Композитор: " + page.machineValue("compositor", ""),
+            "CPU: " + page.machineValue("cpu", SysStats.cpuModel),
+            "GPU: " + page.machineValue("gpu", SysStats.gpuModel),
+            "Имя машины: " + page.machineValue("host", SysStats.host),
+            "Аптайм: " + SysStats.formatUptime(SysStats.uptime),
+            "",
+            "Сейчас",
+            "Память: " + page.usageText(SysStats.memUsed, SysStats.memTotal, SysStats.memFrac),
+            "Swap: " + (SysStats.swapTotal > 0
+                ? page.usageText(SysStats.swapUsed, SysStats.swapTotal, SysStats.swapFrac)
+                : "Не используется"),
+            "Диск /: " + (disk ? page.rootDiskUsageText() : "Нет данных"),
+            "Нагрузка (1 / 5 / 15 мин): " + SysStats.load1.toFixed(2) + " / "
+                + SysStats.load5.toFixed(2) + " / " + SysStats.load15.toFixed(2),
+            "Процессы: " + SysStats.procCount,
+            "Температура CPU: " + page.temperatureText(SysStats.tempC),
+            "Температура GPU: " + page.temperatureText(SysStats.gpuTempC),
+            "Загрузка GPU: " + (SysStats.gpuLoadAvailable ? SysStats.gpuUsage + "%" : "Недоступна"),
+            "Питание GPU: " + gpuPower,
+            "RSS Oberon: " + SysStats.formatBytes(SysStats.shellRss)
+        ].join("\n");
+    }
+
+    function openTaskman() {
+        const home = Quickshell.env("HOME");
+        Quickshell.execDetached([home + "/oberon/build/prefix/bin/oberonqs",
+                                 "-p", home + "/oberon", "ipc", "call", "oberon", "taskman"]);
+    }
+
+    function copySystemInfo() {
+        Quickshell.clipboardText = page.systemInfoText();
+        page.systemInfoCopied = true;
+        systemInfoCopiedTimer.restart();
+    }
+
     readonly property var section: page.sectionForId(page.sectionId) || page.sections[0]
     readonly property var activeGroup: page.groupForPage(page.sectionId)
     readonly property var groupPages: page.pagesForGroup(page.activeGroup)
@@ -258,6 +388,41 @@ RowLayout {
                 page.outputsError = "Umbriel вернул некорректный список выходов.";
             }
         }
+    }
+
+    // Статические сведения собираются только в разделе «Система» и редко.
+    Process {
+        id: machineProc
+
+        running: false
+        command: ["sh", "-c",
+            "OS=$(. /etc/os-release 2>/dev/null; printf '%s' \"${PRETTY_NAME:-}\"); " +
+            "printf 'OS %s\\n' \"${OS:-Не определена}\"; " +
+            "printf 'KERNEL %s\\n' \"$(uname -r 2>/dev/null)\"; " +
+            "if command -v umbriel >/dev/null 2>&1; then V=$(umbriel --version 2>&1 | head -n 1); else V=''; fi; " +
+            "printf 'COMPOSITOR %s\\n' \"${V:-Не определён}\"; " +
+            "awk -F: '/^model name/{sub(/^[[:space:]]+/, \"\", $2); printf \"CPU %s\\n\", $2; exit}' /proc/cpuinfo 2>/dev/null; " +
+            "G=$(lspci 2>/dev/null | grep -iE 'vga|3d controller' | head -n 1 | cut -d: -f3- | sed 's/^ //'); " +
+            "printf 'GPU %s\\n' \"${G:-}\"; " +
+            "printf 'HOST %s\\n' \"$(uname -n 2>/dev/null)\""]
+        stdout: SplitParser {
+            onRead: line => page.parseMachineLine(line)
+        }
+    }
+
+    Timer {
+        id: machineRefreshTimer
+
+        interval: 30000
+        repeat: true
+        onTriggered: page.refreshMachineInfo()
+    }
+
+    Timer {
+        id: systemInfoCopiedTimer
+
+        interval: 1800
+        onTriggered: page.systemInfoCopied = false
     }
 
     // Отложенный повторный опрос после записи (config-reload асинхронен).
@@ -688,6 +853,108 @@ RowLayout {
         to: max
         suffix: "%"
         valueText: (v) => Math.round(v * displayMul) + suffix
+    }
+
+    // Индикатор объёма, не интерактивный слайдер.
+    component SystemMeter: ColumnLayout {
+        id: meter
+
+        property string label: ""
+        property string value: ""
+        property real fraction: 0
+
+        Layout.fillWidth: true
+        spacing: Theme.dp(5)
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.dp(8)
+
+            LText {
+                Layout.fillWidth: true
+                text: meter.label
+                role: "bodySmall"
+                color: Theme.subtext
+                elide: Text.ElideRight
+            }
+
+            LText {
+                text: meter.value
+                role: "labelMedium"
+                weight: 540
+                color: Theme.text
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideRight
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: Theme.dp(6)
+            radius: Theme.pill(height)
+            color: Theme.mSurface
+            clip: true
+
+            Rectangle {
+                width: parent.width * Math.max(0, Math.min(1,
+                    isFinite(meter.fraction) ? meter.fraction : 0))
+                height: parent.height
+                radius: parent.radius
+                color: Theme.primary
+
+                Behavior on width {
+                    NumberAnimation { duration: Theme.durShort }
+                }
+            }
+        }
+    }
+
+    component SystemDatum: ColumnLayout {
+        id: datum
+
+        property string label: ""
+        property string value: ""
+
+        Layout.fillWidth: true
+        spacing: Theme.dp(2)
+
+        SLabel { text: datum.label }
+
+        LText {
+            Layout.fillWidth: true
+            text: datum.value
+            role: "bodyLarge"
+            weight: 500
+            color: Theme.text
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    component SystemInfoRow: RowLayout {
+        id: infoRow
+
+        property string label: ""
+        property string value: ""
+
+        Layout.fillWidth: true
+        spacing: Theme.dp(12)
+
+        LText {
+            Layout.preferredWidth: Theme.dp(112)
+            text: infoRow.label
+            role: "bodySmall"
+            color: Theme.subtext
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        LText {
+            Layout.fillWidth: true
+            text: infoRow.value
+            role: "bodyMedium"
+            weight: 480
+            color: Theme.text
+            wrapMode: Text.WordWrap
+        }
     }
 
     // строка выбора из набора значений. До 4 вариантов — связанная группа
@@ -2530,7 +2797,129 @@ RowLayout {
 
             SCard {
                 Layout.fillWidth: true
+                title: "Сейчас"
+
+                SystemMeter {
+                    label: "Память"
+                    value: page.usageText(SysStats.memUsed, SysStats.memTotal, SysStats.memFrac)
+                    fraction: SysStats.memFrac
+                }
+                SystemMeter {
+                    label: "Swap"
+                    value: SysStats.swapTotal > 0
+                        ? page.usageText(SysStats.swapUsed, SysStats.swapTotal, SysStats.swapFrac)
+                        : "Не используется"
+                    fraction: SysStats.swapFrac
+                }
+                SystemMeter {
+                    label: "Диск /"
+                    value: page.rootDiskUsageText()
+                    fraction: page.rootDisk && Number(page.rootDisk.total) > 0
+                        ? Number(page.rootDisk.used) / Number(page.rootDisk.total) : 0
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.dp(8)
+                    columns: 3
+                    rowSpacing: Theme.dp(12)
+                    columnSpacing: Theme.dp(16)
+
+                    SystemDatum {
+                        label: "Средняя нагрузка · 1 / 5 / 15"
+                        value: SysStats.load1.toFixed(2) + " / " + SysStats.load5.toFixed(2)
+                            + " / " + SysStats.load15.toFixed(2)
+                    }
+                    SystemDatum {
+                        label: "Процессы"
+                        value: String(SysStats.procCount)
+                    }
+                    SystemDatum {
+                        label: "Температура CPU"
+                        value: page.temperatureText(SysStats.tempC)
+                    }
+                    SystemDatum {
+                        label: "Температура GPU"
+                        value: page.temperatureText(SysStats.gpuTempC)
+                    }
+                    SystemDatum {
+                        label: "Загрузка GPU / питание"
+                        value: (SysStats.gpuLoadAvailable ? SysStats.gpuUsage + "%" : "Нет данных")
+                            + (SysStats.gpuPowerW > 0
+                                ? " · " + Number(SysStats.gpuPowerW).toFixed(1) + " Вт" : "")
+                    }
+                    SystemDatum {
+                        label: "Аптайм"
+                        value: SysStats.formatUptime(SysStats.uptime)
+                    }
+                    SystemDatum {
+                        label: "RSS оболочки"
+                        value: SysStats.shellRss > 0
+                            ? SysStats.formatBytes(SysStats.shellRss) : "Сбор данных…"
+                    }
+                }
+            }
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Машина"
+
+                SystemInfoRow {
+                    label: "ОС"
+                    value: page.machineValue("os", SysStats.distro)
+                }
+                SystemInfoRow {
+                    label: "Ядро"
+                    value: page.machineValue("kernel", SysStats.kernel)
+                }
+                SystemInfoRow {
+                    label: "Композитор"
+                    value: page.machineValue("compositor", "")
+                }
+                SystemInfoRow {
+                    label: "CPU"
+                    value: page.machineValue("cpu", SysStats.cpuModel)
+                }
+                SystemInfoRow {
+                    label: "GPU"
+                    value: page.machineValue("gpu", SysStats.gpuModel)
+                }
+                SystemInfoRow {
+                    label: "Имя машины"
+                    value: page.machineValue("host", SysStats.host)
+                }
+                SystemInfoRow {
+                    label: "Аптайм"
+                    value: SysStats.formatUptime(SysStats.uptime)
+                }
+
+                LText {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.dp(4)
+                    text: "Статические сведения обновляются при открытии раздела и раз в 30 секунд."
+                    role: "bodySmall"
+                    color: Theme.subtextDim
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            SCard {
+                Layout.fillWidth: true
                 title: "Инструменты"
+
+                SButton {
+                    text: "Открыть диспетчер задач"
+                    icon: "memory"
+                    variant: "tonal"
+                    onClicked: page.openTaskman()
+                }
+
+                SButton {
+                    text: page.systemInfoCopied ? "Сведения скопированы" : "Скопировать сведения"
+                    icon: "content_copy"
+                    variant: "tonal"
+                    onClicked: page.copySystemInfo()
+                }
 
                 SButton {
                     text: "Запись экрана"

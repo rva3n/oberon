@@ -32,6 +32,7 @@ Singleton {
     property int uptime: 0        // секунды
     property string host: ""
     property string kernel: ""
+    property real shellRss: 0     // байты
 
     // ── GPU (amdgpu / drm / hwmon) ────────────────────────────────────
     property real gpuBusy: 0      // 0..1
@@ -141,8 +142,10 @@ Singleton {
                                          || s.gpuModel !== ""
 
     property bool taskmanActive: false
-    // Вне диспетчера метрики нужны системному desktop-виджету.
+    property bool settingsActive: false
+    // Метрики работают для диспетчера, системного виджета и раздела настроек.
     readonly property bool active: s.taskmanActive
+        || s.settingsActive
         || (Prefs.widgetsEnabled && WidgetsStore.ready && WidgetsStore.isEnabled("system"))
         || Prefs.systemLoadOnIsland
 
@@ -452,6 +455,8 @@ Singleton {
             s.host = line.slice(5).trim();
         } else if (line.startsWith("KERN ")) {
             s.kernel = line.slice(5).trim();
+        } else if (line.startsWith("RSS ")) {
+            s.shellRss = +line.slice(4) || 0;
         }
     }
 
@@ -552,6 +557,7 @@ Singleton {
             "echo \"UP $(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)\"; " +
             "echo \"HOST $(uname -n 2>/dev/null)\"; " +
             "echo \"KERN $(uname -r 2>/dev/null)\"; " +
+            "awk '/^VmRSS:/{print \"RSS\", $2 * 1024; exit}' /proc/$PPID/status 2>/dev/null; " +
             "T=$(for z in /sys/class/thermal/thermal_zone*/temp; do [ -r \"$z\" ] && cat \"$z\" && break; done); echo \"TZ ${T:-0}\"; " +
             "B=$(for f in /sys/class/drm/card[0-9]*/device/gpu_busy_percent; do [ -r \"$f\" ] && cat \"$f\" && break; done); [ -n \"$B\" ] && echo \"GPUB $B\"; " +
             "V=$(for f in /sys/class/drm/card[0-9]*/device/mem_info_vram_used; do [ -r \"$f\" ] && cat \"$f\" && break; done); " +
@@ -620,7 +626,7 @@ Singleton {
     }
 
     Timer {
-        interval: s.taskmanActive ? 1000 : 3000
+        interval: s.taskmanActive ? 1000 : (s.settingsActive ? 2000 : 3000)
         running: s.active
         repeat: true
         triggeredOnStart: true
