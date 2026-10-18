@@ -140,6 +140,13 @@ ShellRoot {
         source: "components/Switcher.qml"
     }
 
+    // Обзор воркспейсов — отдельное overlay-окно, выше Switcher и ниже polkit.
+    LazyLoader {
+        id: overviewLoader
+        active: true
+        source: "components/Overview.qml"
+    }
+
     // Модальный polkit-промпт поверх всего (Overlay). Создаётся после Lockscreen,
     // чтобы быть выше острова. LazyLoader нужен, т.к. components/qmldir не
     // перечисляет PolkitPrompt (его трогать нельзя), а LazyLoader умеет
@@ -237,6 +244,7 @@ ShellRoot {
         if (sessionLoader.item) sessionLoader.item.close();
         if (cheatsheetLoader.item) cheatsheetLoader.item.close();
         if (shotLoader.item) shotLoader.item.close();
+        if (overviewLoader.item) overviewLoader.item.close();
     }
 
     function lock()           { root.view = "idle"; root.panelPage = ""; Quickshell.execDetached(["umbriel", "msg", "dpms-on"]); root.locked = true; }
@@ -322,6 +330,19 @@ ShellRoot {
         function taskman() { root.view = "taskman"; root.panelPage = ""; }
         function taskmanAt(i: int) { root.taskmanTab = i; root.view = "taskman"; root.panelPage = ""; }
         function tab(name: string) { root.setTab(name); }
+        function overview() {
+            if (!overviewLoader.item) return;
+            if (overviewLoader.item.shown) {
+                overviewLoader.item.close();
+                return;
+            }
+            root.closeOverlays();
+            if (switcherLoader.item) switcherLoader.item.close();
+            if (sessionLoader.item) sessionLoader.item.close();
+            if (cheatsheetLoader.item) cheatsheetLoader.item.close();
+            if (shotLoader.item) shotLoader.item.close();
+            overviewLoader.item.open();
+        }
         function pageCalendar() { root.view = "panel"; root.panelPage = "calendar"; }
         function pageTimers() { root.view = "panel"; root.panelPage = "timers"; }
     function pageGames() { root.view = "panel"; root.panelPage = "games"; }
