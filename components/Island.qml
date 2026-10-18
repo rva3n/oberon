@@ -20,6 +20,7 @@ PanelWindow {
     required property var modelData
     property var shell: null
     property string view: "idle"        // idle | panel | launcher | taskman | tray
+    property bool settingsKeysCapture: false
     property bool pillDragging: false
     property point pillDragCenterOffset: Qt.point(0, 0)
 
@@ -68,8 +69,9 @@ PanelWindow {
     // (components/Backdrop.qml — Top-слой), иначе клик внутри панели её закрывает.
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-island"
-    WlrLayershell.keyboardFocus: (view === "launcher" || view === "panel" || view === "taskman" || view === "tray")
-        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: win.settingsKeysCapture ? WlrKeyboardFocus.Exclusive
+        : ((view === "launcher" || view === "panel" || view === "taskman" || view === "tray")
+            ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None)
     mask: Region {
         item: pill
         radius: pill.radius

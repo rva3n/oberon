@@ -131,6 +131,9 @@ RowLayout {
         { id: "input", title: "Ввод", glyph: "keyboard", page: "input",
           sub: "Мышь и клавиатура Umbriel.",
           keys: "mouse keyboard layouts xkb pointer sensitivity speed accel scroll natural left handed repeat rate delay options input мышь клавиатура раскладки указатель скорость чувствительность разгон прокрутка левша повторы" },
+        { id: "keys", title: "Сочетания клавиш", glyph: "keyboard", page: "keys",
+          sub: "Редактор сочетаний клавиш Umbriel.",
+          keys: "keybinds hotkeys shortcuts keyboard сочетания клавиши бинды управление" },
         { id: "lock", title: "Экран блокировки", glyph: "lock", page: "lock",
            sub: "Блокировка и действия при бездействии.",
            keys: "lock screen blur idle блокировка экран размытие безопасность" },
@@ -154,7 +157,7 @@ RowLayout {
     readonly property var groups: [
         { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "media", "clock"] },
         { id: "appearance", title: "Оформление", glyph: "colors", pages: ["look", "weather", "motion", "night"] },
-        { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "games", "opencode"] },
+        { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "keys", "games", "opencode"] },
         { id: "devices", title: "Устройства", glyph: "desktop_windows", pages: ["display", "input"] },
         { id: "security", title: "Безопасность", glyph: "lock", pages: ["lock", "vault"] },
         { id: "system", title: "Система", glyph: "settings", pages: ["system", "power", "compositor", "updates"] }
@@ -3095,6 +3098,11 @@ RowLayout {
         }
         OpenCodePage {
             visible: page.sectionId === "opencode"
+            Layout.fillWidth: true
+            win: page.win
+        }
+        KeybindsPage {
+            visible: page.visible && page.sectionId === "keys"
             Layout.fillWidth: true
             win: page.win
         }
