@@ -57,7 +57,7 @@ jemalloc libdrm mesa pipewire wireplumber glib2 polkit wayland wayland-protocols
 libxcb xcb-util-cursor xcb-util-wm
 pugixml hyprlang hyprutils sdbus-cpp
 fftw ncurses iniparser alsa-lib libpulse
-grim slurp wf-recorder wl-clipboard cliphist imagemagick ddcutil gammastep
+grim slurp wf-recorder ffmpeg wl-clipboard cliphist imagemagick ddcutil gammastep
 procps-ng upower bluez-utils networkmanager
 tesseract tesseract-data-eng tesseract-data-rus"
 	# shellcheck disable=SC2086

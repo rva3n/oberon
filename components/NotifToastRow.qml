@@ -7,7 +7,7 @@ import "../ui"
 // NotifCard): аватар dp(28), строка приложения (subtextDim), summary
 // (titleSmall/DemiBold), тело в N строк цветом subtext со ссылками tint;
 // краткая вспышка акцента при появлении. API прежний: current. Авто-скрытие
-// остаётся за Notif.qml (Prefs.toastSeconds), капсулу рисует Island.
+// остаётся за Notif.qml; видимость тела настраивается через Prefs.notifPreview.
 Item {
     id: notifRow
     property var current: null
@@ -130,7 +130,7 @@ Item {
             // тело (subtext, N строк, ссылки цветом tint)
             LText {
                 Layout.fillWidth: true
-                visible: text !== ""
+                visible: Prefs.notifPreview && text !== ""
                 role: "bodySmall"
                 color: Theme.subtext
                 textFormat: Text.StyledText

@@ -110,8 +110,8 @@ RowLayout {
           sub: "Блокировка и действия при бездействии.",
           keys: "lock screen blur idle блокировка экран размытие безопасность" },
         { id: "system", title: "Система", glyph: "settings", page: "system",
-          sub: "Сброс пользовательских настроек Oberon.",
-          keys: "about system reset defaults система сброс настройки по умолчанию" },
+          sub: "Запись экрана и пользовательские настройки Oberon.",
+          keys: "about system reset defaults record video recording экран запись сброс настройки по умолчанию" },
         { id: "power", title: "Питание", glyph: "power", page: "power",
           sub: "Что и когда делать при бездействии.",
           keys: "power idle suspend lock screen питание бездействие сон блокировка экран" },
@@ -1058,18 +1058,8 @@ RowLayout {
                     }
                 }
 
-                ParamRow {
-                    label: "Длительность тоста"
-                    min: 2
-                    max: 10
-                    value: Prefs.toastSeconds
-                    displayMul: 1
-                    suffix: " сек"
-                    onCommitted: (v) => Prefs.set("toastSeconds", Math.round(v))
-                }
-
                 ChoiceRow {
-                    label: "Таймаут уведомления"
+                    label: "Таймаут обычного уведомления"
                     values: [3, 5, 8, 10]
                     labels: ["3 сек", "5 сек", "8 сек", "10 сек"]
                     value: Prefs.notifTimeout
@@ -1084,7 +1074,7 @@ RowLayout {
                 }
                 ToggleRow {
                     label: "Предпросмотр текста"
-                    sub: "Предпочтение сохраняется; скрытие тела уведомления будет подключено в следующей волне."
+                    sub: "Если выключено, в тосте остаются только приложение и заголовок."
                     checked: Prefs.notifPreview
                     onToggled: (v) => Prefs.set("notifPreview", v)
                 }
@@ -1093,7 +1083,7 @@ RowLayout {
                     role: "bodySmall"
                     color: Theme.subtextDim
                     wrapMode: Text.WordWrap
-                    text: "Таймауты для стандартных и критических уведомлений сохраняются в Prefs; их применение к серверу уведомлений будет подключено отдельно. Длительность тоста выше работает как прежде."
+                    text: "Критическое уведомление с таймаутом 0 остаётся на экране до закрытия."
                 }
             }
         }
@@ -2194,6 +2184,18 @@ RowLayout {
             visible: page.sectionId === "system"
             Layout.fillWidth: true
             spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Инструменты"
+
+                SButton {
+                    text: "Запись экрана"
+                    icon: "videocam"
+                    variant: "tonal"
+                    onClicked: if (page.win && page.win.shell) page.win.shell.setPage("record")
+                }
+            }
 
             SCard {
                 Layout.fillWidth: true

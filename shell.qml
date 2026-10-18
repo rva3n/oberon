@@ -86,7 +86,7 @@ ShellRoot {
         id: notifServer
         keepOnReload: true
         onNotification: (n) => {
-            const snap = { appName: n.appName, summary: n.summary, body: n.body, appIcon: n.appIcon, ts: Date.now(), raw: n };
+            const snap = { appName: n.appName, summary: n.summary, body: n.body, appIcon: n.appIcon, urgency: n.urgency, ts: Date.now(), raw: n };
             Notif.add(snap);
             if (!Notif.dnd && root.view === "idle" && !root.locked) Notif.toast(snap, Umbriel.activeOutput);
         }
@@ -294,6 +294,7 @@ ShellRoot {
         function pageBrightness() { root.view = "panel"; root.panelPage = "brightness"; }
         function pagePower() { root.view = "panel"; root.panelPage = "power"; }
         function pageWeather() { root.view = "panel"; root.panelPage = "weather"; }
+        function pageRecord() { root.view = "panel"; root.panelPage = "record"; }
         function pageSystem() { root.view = "taskman"; root.panelPage = ""; }
         function taskman() { root.view = "taskman"; root.panelPage = ""; }
         function taskmanAt(i: int) { root.taskmanTab = i; root.view = "taskman"; root.panelPage = ""; }

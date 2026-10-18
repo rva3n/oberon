@@ -59,7 +59,8 @@ PanelWindow {
         opencode: "l",
         calendar: "m",
         weather: "m",
-        timers: "m"
+        timers: "m",
+        record: "m"
     })
     readonly property var sizeClasses: ({
         s: Theme.dp(440),
@@ -338,6 +339,7 @@ PanelWindow {
                 WeatherPage { win: win }
                 CalendarPage { win: win }
                 TimersPage { win: win }
+                RecordView { win: win }
                 SettingsPage { win: win }
                 GamesPage { win: win }
                 UpdatesPage { win: win }
@@ -481,7 +483,8 @@ PanelWindow {
         emoji: "Эмодзи",
         games: "Игры",
         updates: "Обновления",
-        settings: "Настройки"
+        settings: "Настройки",
+        record: "Запись"
     })
     readonly property string pageTitle: pageTitles[page] || ""
 

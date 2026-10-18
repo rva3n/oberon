@@ -60,6 +60,11 @@ Singleton {
         dndScheduleEnabled: false,
         dndFrom: "23:00",
         dndTo: "07:00",
+        recordFps: 60,
+        recordDir: "~/Videos",
+        recordAudio: true,
+        recordMic: false,
+        recordMicSource: "",
         goPlan: "go",
         goChipMode: "auto",
         goWarnPct: 80,
@@ -162,6 +167,11 @@ Singleton {
             property bool dndScheduleEnabled: false
             property string dndFrom: "23:00"
             property string dndTo: "07:00"
+            property int recordFps: 60
+            property string recordDir: "~/Videos"
+            property bool recordAudio: true
+            property bool recordMic: false
+            property string recordMicSource: ""
             property string goPlan: "go"
             property string goChipMode: "auto"
             property int goWarnPct: 80
@@ -256,6 +266,11 @@ Singleton {
     readonly property bool dndScheduleEnabled: a.dndScheduleEnabled
     readonly property string dndFrom: a.dndFrom
     readonly property string dndTo: a.dndTo
+    readonly property int recordFps: a.recordFps
+    readonly property string recordDir: a.recordDir
+    readonly property bool recordAudio: a.recordAudio
+    readonly property bool recordMic: a.recordMic
+    readonly property string recordMicSource: a.recordMicSource
     readonly property string goPlan: a.goPlan
     readonly property string goChipMode: a.goChipMode
     readonly property int goWarnPct: a.goWarnPct

@@ -12,6 +12,7 @@ Singleton {
     property bool visible: false  // toast shown in the island
     property string showOn: ""
     property bool dnd: Prefs.dnd  // персистится в prefs.json (пишется через Prefs.set)
+    property int currentTimeoutMs: 5000
 
     readonly property string statePath: Quickshell.stateDir + "/notifs.json"
 
@@ -66,8 +67,23 @@ Singleton {
 
     Timer {
         id: hideTimer
-        interval: Math.max(2, Prefs.toastSeconds) * 1000
+        interval: root.currentTimeoutMs
         onTriggered: root.visible = false
+    }
+
+    function timeoutFor(n) {
+        const critical = n && Number(n.urgency) === 2;
+        let seconds;
+        if (critical) {
+            seconds = Number(Prefs.notifCritTimeout);
+            if (!isFinite(seconds) || seconds < 0) seconds = 0;
+        } else {
+            seconds = Number(Prefs.notifTimeout);
+            if (Prefs.notifTimeout === undefined || Prefs.notifTimeout === null || !isFinite(seconds))
+                seconds = Number(Prefs.toastSeconds);
+            if (!isFinite(seconds) || seconds < 0) seconds = 0;
+        }
+        return Math.round(seconds * 1000);
     }
 
     function add(n) {
@@ -80,7 +96,9 @@ Singleton {
         root.current = n;
         root.showOn = String(output || "");
         root.visible = true;
-        hideTimer.restart();
+        root.currentTimeoutMs = root.timeoutFor(n);
+        if (root.currentTimeoutMs > 0) hideTimer.restart();
+        else hideTimer.stop();
         playNotifSound();
     }
     function push(n, output) { add(n); toast(n, output || ""); }
