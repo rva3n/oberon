@@ -73,7 +73,26 @@ Singleton {
         mangohudEngine: false,
         mangohudIO: false,
         mangohudMedia: false,
-        mangohudHudAlpha: 1.0
+        mangohudHudAlpha: 1.0,
+        mangohudPosition: "top-left",
+        mangohudHorizontal: false,
+        mangohudFpsLimit: 0,
+        mangohudToggleKey: "Shift_R+F12",
+        gsEnabled: true,
+        gsWindowMode: "fullscreen",
+        gsOutRes: "native",
+        gsInRes: "same",
+        gsFilter: "none",
+        gsSharpness: 5,
+        gsFpsLimit: 0,
+        gsAdaptiveSync: true,
+        gsHdr: false,
+        gsGrabCursor: true,
+        gsMangoApp: true,
+        gameGamemode: true,
+        gameProtonWayland: false,
+        gameProtonHdr: false,
+        gameProtonNtsync: true
     })
 
     Process {
@@ -151,6 +170,25 @@ Singleton {
             property bool mangohudIO: false
             property bool mangohudMedia: false
             property real mangohudHudAlpha: 1.0
+            property string mangohudPosition: "top-left"
+            property bool mangohudHorizontal: false
+            property int mangohudFpsLimit: 0
+            property string mangohudToggleKey: "Shift_R+F12"
+            property bool gsEnabled: true
+            property string gsWindowMode: "fullscreen"
+            property string gsOutRes: "native"
+            property string gsInRes: "same"
+            property string gsFilter: "none"
+            property int gsSharpness: 5
+            property int gsFpsLimit: 0
+            property bool gsAdaptiveSync: true
+            property bool gsHdr: false
+            property bool gsGrabCursor: true
+            property bool gsMangoApp: true
+            property bool gameGamemode: true
+            property bool gameProtonWayland: false
+            property bool gameProtonHdr: false
+            property bool gameProtonNtsync: true
         }
     }
 
@@ -220,6 +258,25 @@ Singleton {
     readonly property bool mangohudIO: a.mangohudIO
     readonly property bool mangohudMedia: a.mangohudMedia
     readonly property real mangohudHudAlpha: a.mangohudHudAlpha
+    readonly property string mangohudPosition: a.mangohudPosition
+    readonly property bool mangohudHorizontal: a.mangohudHorizontal
+    readonly property int mangohudFpsLimit: a.mangohudFpsLimit
+    readonly property string mangohudToggleKey: a.mangohudToggleKey
+    readonly property bool gsEnabled: a.gsEnabled
+    readonly property string gsWindowMode: a.gsWindowMode
+    readonly property string gsOutRes: a.gsOutRes
+    readonly property string gsInRes: a.gsInRes
+    readonly property string gsFilter: a.gsFilter
+    readonly property int gsSharpness: a.gsSharpness
+    readonly property int gsFpsLimit: a.gsFpsLimit
+    readonly property bool gsAdaptiveSync: a.gsAdaptiveSync
+    readonly property bool gsHdr: a.gsHdr
+    readonly property bool gsGrabCursor: a.gsGrabCursor
+    readonly property bool gsMangoApp: a.gsMangoApp
+    readonly property bool gameGamemode: a.gameGamemode
+    readonly property bool gameProtonWayland: a.gameProtonWayland
+    readonly property bool gameProtonHdr: a.gameProtonHdr
+    readonly property bool gameProtonNtsync: a.gameProtonNtsync
 
     // Инстанцирование ленивых синглтонов: без ссылки на них QML их не создаёт,
     // и NightLight/Sounds никогда бы не отреагировали на эти префы.
