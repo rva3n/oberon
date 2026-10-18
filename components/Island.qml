@@ -57,6 +57,7 @@ PanelWindow {
         games: "l",
         updates: "l",
         opencode: "l",
+        media: "l",
         calendar: "m",
         weather: "m",
         timers: "m",
@@ -340,6 +341,7 @@ PanelWindow {
                 CalendarPage { win: win }
                 TimersPage { win: win }
                 RecordView { win: win }
+                MediaView { win: win }
                 SettingsPage { win: win }
                 GamesPage { win: win }
                 UpdatesPage { win: win }
@@ -484,7 +486,8 @@ PanelWindow {
         games: "Игры",
         updates: "Обновления",
         settings: "Настройки",
-        record: "Запись"
+        record: "Запись",
+        media: "Медиа"
     })
     readonly property string pageTitle: pageTitles[page] || ""
 

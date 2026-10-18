@@ -14,6 +14,7 @@ ShellRoot {
 
     property string view: "idle"   // idle | panel | launcher | taskman | tray
     property string panelPage: ""
+    property string mediaPath: ""
     property string settingsSection: "look"
     property bool widgetsEditing: false
     property string launcherTab: "apps"    // apps | clipboard | emoji | packages (вкладки лончера)
@@ -295,6 +296,13 @@ ShellRoot {
         function pagePower() { root.view = "panel"; root.panelPage = "power"; }
         function pageWeather() { root.view = "panel"; root.panelPage = "weather"; }
         function pageRecord() { root.view = "panel"; root.panelPage = "record"; }
+        function media(path: string) {
+            const value = String(path || "").trim();
+            const home = Quickshell.env("HOME");
+            root.mediaPath = value === "~" ? home : (value.indexOf("~/") === 0 ? home + value.slice(1) : value);
+            root.view = "panel";
+            root.panelPage = "media";
+        }
         function pageSystem() { root.view = "taskman"; root.panelPage = ""; }
         function taskman() { root.view = "taskman"; root.panelPage = ""; }
         function taskmanAt(i: int) { root.taskmanTab = i; root.view = "taskman"; root.panelPage = ""; }
