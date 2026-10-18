@@ -16,3 +16,5 @@ NotifItem 1.0 NotifItem.qml
 SliderRow 1.0 SliderRow.qml
 TabBtn 1.0 TabBtn.qml
 WidgetLayer 1.0 WidgetLayer.qml
+NotchCorner 1.0 NotchCorner.qml
+NotchShape 1.0 NotchShape.qml

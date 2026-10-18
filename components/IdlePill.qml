@@ -1,5 +1,8 @@
 import QtQuick
+import QtQuick.Effects
+import QtQuick.Layouts
 import Quickshell
+import Quickshell.Services.SystemTray
 import "../core"
 import "../ui"
 
@@ -14,6 +17,10 @@ Item {
     property date now: new Date()
     property string output: ""
     property var shell: null
+    property bool isVertical: false
+    property var player: null
+    property var battery: null
+    property bool showBattery: false
     // Тултип-хост (Island): объект с showTip(hoverItem, text)/hideTip(hoverItem)
     property var tipHost: null
     // Порядок чипов (islandOrder), приходит из Island; null/не массив → дефолт
@@ -21,11 +28,67 @@ Item {
 
     implicitWidth: mode === "notif" ? notifRow.implicitWidth
                  : mode === "osd" ? osdRow.implicitWidth
-                 : idleRow.implicitWidth
+                 : isVertical ? verticalColumn.implicitWidth : idleRow.implicitWidth
     // notif ≥40 — тосту не тесно; osd 34, idle 28 (остров = +6)
     implicitHeight: mode === "notif" ? Math.max(Theme.dp(40), notifRow.implicitHeight)
-                  : mode === "osd" ? Theme.dp(34)
-                  : Theme.dp(28)
+                   : mode === "osd" ? Theme.dp(34)
+                   : isVertical ? verticalColumn.implicitHeight : Theme.dp(28)
+
+    // Общие значения чипов вычисляются один раз и используются обеими
+    // раскладками. Горизонтальный ряд сохраняет прежний состав и порядок.
+    readonly property bool showLayout: Umbriel.keyboardLayout !== "" && Prefs.islandLayout
+    readonly property string clockTime: Qt.formatDateTime(holder.now, Prefs.clock12
+        ? (Prefs.clockSeconds ? "h:mm:ss AP" : "h:mm AP")
+        : (Prefs.clockSeconds ? "HH:mm:ss" : "HH:mm"))
+    readonly property string compactClockTime: Qt.formatDateTime(holder.now,
+        Prefs.clock12 ? "h:mm" : "HH:mm")
+    readonly property string dayLabel: holder.now.toLocaleDateString(Qt.locale("ru_RU"), "ddd")
+    readonly property string weatherStatus: Weather.hasData && isFinite(Weather.temp) ? "data"
+        : Weather.loading ? "loading" : "error"
+    readonly property string weatherLabel: weatherStatus === "data" ? Math.round(Weather.temp) + "°"
+        : weatherStatus === "loading" ? "..." : "—"
+    readonly property var goInfo: GoUsage.chipOut(Prefs.goChipMode)
+    readonly property bool goWarn: Boolean(goInfo && goInfo.warn)
+    readonly property bool goIsError: Boolean(goInfo && goInfo.tone === "error")
+    readonly property string mediaArt: holder.player ? String(holder.player.trackArtUrl || "") : ""
+    readonly property string mediaTitle: holder.player ? String(holder.player.trackTitle || "") : ""
+    readonly property int batteryPercent: {
+        if (!holder.battery)
+            return 0;
+        const value = Number(holder.battery.percentage || 0);
+        return Math.round(value <= 1 ? value * 100 : value);
+    }
+    readonly property bool batteryCharging: holder.battery
+        ? String(holder.battery.iconName || "").indexOf("charging") !== -1
+            || String(holder.battery.state || "").toLowerCase().indexOf("charging") !== -1
+        : false
+    readonly property var workspaceItems: Umbriel.workspacesFor(holder.output)
+    readonly property var activeWorkspace: {
+        const items = holder.workspaceItems || [];
+        for (let i = 0; i < items.length; i++)
+            if (items[i] && items[i].active) return items[i];
+        return null;
+    }
+    readonly property string workspaceNumber: holder.activeWorkspace
+        ? String(holder.activeWorkspace.index) : "—"
+    readonly property var trayItems: {
+        const items = SystemTray.items ? SystemTray.items.values : [];
+        return items.filter((item) => item.status !== Status.Passive);
+    }
+
+    function resolveTrayIcon(raw) {
+        if (!raw)
+            return "";
+        if (raw.startsWith("image://") || raw.startsWith("file://") || raw.startsWith("/"))
+            return raw;
+        const qIdx = raw.indexOf("?path=");
+        if (qIdx !== -1) {
+            const name = raw.substring(0, qIdx);
+            const dir = raw.substring(qIdx + 6);
+            return "file://" + dir + "/" + name.substring(name.lastIndexOf("/") + 1);
+        }
+        return Quickshell.iconPath(raw, true);
+    }
 
     // ── порядок чипов: islandOrder (id: kb/weather/ws/clock/go/tray) ──────
     // ВАЖНО: JsonAdapter отдаёт QVariantList, а не JS-Array — Array.isArray
@@ -59,7 +122,7 @@ Item {
     Component { id: kbChip
         Item {
             id: layoutChip
-            visible: Umbriel.keyboardLayout !== "" && Prefs.islandLayout
+            visible: holder.showLayout
             implicitWidth: layoutText.implicitWidth + Theme.dp(18)
             implicitHeight: Theme.dp(24)
             scale: layoutArea.pressed ? 0.96 : 1
@@ -135,8 +198,7 @@ Item {
             }
 
             // status: "data" | "loading" | "error"
-            readonly property string status: Weather.hasData && isFinite(Weather.temp) ? "data"
-                : Weather.loading ? "loading" : "error"
+            readonly property string status: holder.weatherStatus
 
             Rectangle {
                 x: -weatherOuter.grow / 2
@@ -171,7 +233,7 @@ Item {
                     role: "labelLarge"
                     tabular: true
                     color: Theme.text
-                    text: weatherOuter.status === "data" ? Math.round(Weather.temp) + "°" : (weatherOuter.status === "loading" ? "..." : "—")
+                    text: holder.weatherLabel
                 }
             }
         }
@@ -237,9 +299,7 @@ Item {
                 rounded: 100
                 tabular: true
                 color: Theme.fgAccent
-                text: Qt.formatDateTime(holder.now, Prefs.clock12
-                    ? (Prefs.clockSeconds ? "h:mm:ss AP" : "h:mm AP")
-                    : (Prefs.clockSeconds ? "HH:mm:ss" : "HH:mm"))
+                text: holder.clockTime
             }
         }
     }
@@ -252,9 +312,9 @@ Item {
             implicitHeight: Theme.dp(24)
             scale: goArea.pressed ? 0.96 : 1
 
-            readonly property var chipInfo: GoUsage.chipOut(Prefs.goChipMode)
-            readonly property bool warn: Boolean(goOuter.chipInfo && goOuter.chipInfo.warn)
-            readonly property bool isErr: Boolean(goOuter.chipInfo && goOuter.chipInfo.tone === "error")
+            readonly property var chipInfo: holder.goInfo
+            readonly property bool warn: holder.goWarn
+            readonly property bool isErr: holder.goIsError
 
             Behavior on scale {
                 NumberAnimation {
@@ -331,7 +391,7 @@ Item {
 
     Row {
         id: idleRow
-        visible: holder.mode === "idle"
+        visible: holder.mode === "idle" && !holder.isVertical
         anchors.centerIn: parent
         spacing: Theme.dp(6)
 
@@ -356,6 +416,354 @@ Item {
                                : chipLoader.modelData === "clock" ? clockChip
                                : chipLoader.modelData === "go" ? goChip
                                : trayChip
+            }
+        }
+    }
+
+    // У боковой кромки те же источники данных складываются столбиком. Список
+    // намеренно компактный: подписи длинных чипов остаются в тултипах.
+    readonly property var verticalOrder: ["media", "clock", "weather", "go", "battery", "kb", "ws", "tray"]
+
+    Component { id: verticalMediaChip
+        Item {
+            id: mediaChip
+            implicitWidth: Theme.dp(26)
+            implicitHeight: Theme.dp(26)
+            scale: mediaArea.pressed ? 0.96 : 1
+
+            Behavior on scale {
+                NumberAnimation { duration: Theme.durFastEffects; easing.type: Easing.OutCubic }
+            }
+
+            Rectangle {
+                id: artFrame
+                anchors.centerIn: parent
+                width: Theme.dp(24)
+                height: Theme.dp(24)
+                radius: Theme.rad(7)
+                color: Theme.bgTile
+
+                Image {
+                    id: mediaArtImage
+                    anchors.fill: parent
+                    source: holder.mediaArt
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: true
+                    sourceSize.width: Theme.dp(64)
+                    visible: false
+                    layer.enabled: true
+                }
+                Item {
+                    id: mediaArtMask
+                    anchors.fill: parent
+                    visible: false
+                    layer.enabled: true
+                    Rectangle { anchors.fill: parent; radius: artFrame.radius; color: "#ffffff" }
+                }
+                MultiEffect {
+                    anchors.fill: parent
+                    source: mediaArtImage
+                    maskEnabled: true
+                    maskSource: mediaArtMask
+                    visible: mediaArtImage.status === Image.Ready
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    name: "music_note"
+                    size: Theme.dp(15)
+                    color: Theme.subtext
+                    visible: mediaArtImage.status !== Image.Ready
+                }
+                StateLayer {
+                    id: mediaArea
+                    anchors.fill: parent
+                    radius: artFrame.radius
+                    tint: Theme.primary
+                    onEntered: holder.tip(mediaArea, holder.mediaTitle || "Медиа")
+                    onExited: holder.untip(mediaArea)
+                    onClicked: if (holder.shell) holder.shell.setPage("media")
+                }
+            }
+        }
+    }
+
+    Component { id: verticalClockChip
+        Item {
+            id: verticalClock
+            implicitWidth: clockColumn.implicitWidth
+            implicitHeight: clockColumn.implicitHeight
+            Column {
+                id: clockColumn
+                anchors.centerIn: parent
+                spacing: -Theme.dp(1)
+
+                LText {
+                    id: verticalDay
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    role: "labelSmall"
+                    color: Theme.subtext
+                    text: holder.dayLabel
+                    font.capitalization: Font.AllUppercase
+                }
+                LText {
+                    id: verticalTime
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    role: "labelMedium"
+                    weight: 700
+                    rounded: 100
+                    tabular: true
+                    color: Theme.fgAccent
+                    text: holder.compactClockTime
+                }
+            }
+            StateLayer {
+                id: verticalClockArea
+                anchors.fill: verticalClock
+                radius: Theme.radiusSm
+                tint: Theme.fgAccent
+                onEntered: holder.tip(verticalClockArea, "Часы — клик, чтобы открыть календарь")
+                onExited: holder.untip(verticalClockArea)
+                onClicked: if (holder.shell) holder.shell.setTab("calendar")
+            }
+        }
+    }
+
+    Component { id: verticalWeatherChip
+        Item {
+            id: verticalWeather
+            implicitWidth: weatherColumn.implicitWidth
+            implicitHeight: weatherColumn.implicitHeight
+            Column {
+                id: weatherColumn
+                anchors.centerIn: parent
+                spacing: 0
+                Icon {
+                    id: verticalWeatherIcon
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    name: holder.weatherStatus === "data" ? Weather.icon : "cloud"
+                    size: Theme.dp(15)
+                    color: Theme.primary
+                }
+                LText {
+                    id: verticalWeatherValue
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    role: "labelSmall"
+                    tabular: true
+                    color: Theme.text
+                    text: holder.weatherLabel
+                }
+            }
+            StateLayer {
+                id: verticalWeatherArea
+                anchors.fill: verticalWeather
+                radius: Theme.radiusSm
+                onEntered: holder.tip(verticalWeatherArea, holder.weatherStatus === "data"
+                    ? "Погода: " + Weather.place
+                    : "Погода: " + (holder.weatherStatus === "loading" ? "загрузка…" : "нет данных"))
+                onExited: holder.untip(verticalWeatherArea)
+                onClicked: if (holder.shell && holder.weatherStatus === "data") holder.shell.setTab("weather")
+            }
+        }
+    }
+
+    Component { id: verticalGoChip
+        Item {
+            id: verticalGo
+            implicitWidth: goColumn.implicitWidth
+            implicitHeight: goColumn.implicitHeight
+            Column {
+                id: goColumn
+                anchors.centerIn: parent
+                spacing: 0
+                Icon {
+                    id: verticalGoIcon
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    name: "bolt"
+                    size: Theme.dp(15)
+                    color: holder.goIsError ? Theme.error : (holder.goWarn ? Theme.warning : Theme.primary)
+                }
+                LText {
+                    id: verticalGoLabel
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    role: "labelSmall"
+                    color: holder.goIsError ? Theme.error : (holder.goWarn ? Theme.warning : Theme.text)
+                    text: holder.goInfo ? String(holder.goInfo.text || "GO").slice(0, 4) : "GO"
+                }
+            }
+            StateLayer {
+                id: verticalGoArea
+                anchors.fill: verticalGo
+                radius: Theme.radiusSm
+                onEntered: holder.tip(verticalGoArea, holder.goInfo && holder.goInfo.tip
+                    ? holder.goInfo.tip : "OpenCode — клик, чтобы открыть лимиты")
+                onExited: holder.untip(verticalGoArea)
+                onClicked: if (holder.shell) holder.shell.setPage("opencode")
+            }
+        }
+    }
+
+    Component { id: verticalBatteryChip
+        Item {
+            id: verticalBattery
+            implicitWidth: batteryColumn.implicitWidth
+            implicitHeight: batteryColumn.implicitHeight
+            Column {
+                id: batteryColumn
+                anchors.centerIn: parent
+                spacing: 0
+                Icon {
+                    id: verticalBatteryIcon
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    name: holder.batteryCharging ? "battery_charging_full" : "battery_full"
+                    size: Theme.dp(15)
+                    color: holder.batteryPercent <= 15 ? Theme.error
+                        : (holder.batteryPercent <= 30 ? Theme.warning : Theme.primary)
+                }
+                LText {
+                    id: verticalBatteryValue
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    role: "labelSmall"
+                    tabular: true
+                    color: verticalBatteryIcon.color
+                    text: holder.batteryPercent + "%"
+                }
+            }
+            StateLayer {
+                id: verticalBatteryArea
+                anchors.fill: verticalBattery
+                radius: Theme.radiusSm
+                onEntered: holder.tip(verticalBatteryArea, "Заряд батареи: " + holder.batteryPercent + "%")
+                onExited: holder.untip(verticalBatteryArea)
+            }
+        }
+    }
+
+    Component { id: verticalLayoutChip
+        Item {
+            implicitWidth: Theme.dp(26)
+            implicitHeight: Theme.dp(24)
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: layoutArea
+                    radius: parent.radius
+                    onEntered: holder.tip(layoutArea, "Раскладка клавиатуры — клик, чтобы сменить")
+                    onExited: holder.untip(layoutArea)
+                    onClicked: Quickshell.execDetached(["umbriel", "msg", "keyboard-layout-next"])
+                }
+            }
+            LText {
+                anchors.centerIn: parent
+                role: "labelSmall"
+                color: Theme.subtext
+                text: Umbriel.keyboardLayout
+                font.capitalization: Font.AllUppercase
+            }
+        }
+    }
+
+    Component { id: verticalWorkspaceChip
+        Item {
+            implicitWidth: Theme.dp(26)
+            implicitHeight: Theme.dp(24)
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: workspaceArea
+                    radius: parent.radius
+                    onEntered: holder.tip(workspaceArea, "Рабочий стол " + holder.workspaceNumber)
+                    onExited: holder.untip(workspaceArea)
+                    onClicked: if (holder.activeWorkspace)
+                        Quickshell.execDetached(["umbriel", "msg", "workspace-switch:" + holder.activeWorkspace.index])
+                }
+            }
+            LText {
+                anchors.centerIn: parent
+                role: "labelMedium"
+                color: Theme.text
+                text: holder.workspaceNumber
+            }
+        }
+    }
+
+    Component { id: verticalTrayChip
+        Item {
+            id: verticalTray
+            readonly property int shownCount: Math.min(3, holder.trayItems.length)
+            implicitWidth: Theme.dp(24)
+            implicitHeight: shownCount > 0
+                ? shownCount * Theme.dp(18) + (shownCount - 1) * Theme.dp(2) : 0
+
+            Column {
+                anchors.centerIn: parent
+                spacing: Theme.dp(2)
+                Repeater {
+                    model: verticalTray.shownCount
+                    delegate: Image {
+                        required property int index
+                        readonly property var trayItem: holder.trayItems[index]
+                        width: Theme.dp(18)
+                        height: Theme.dp(18)
+                        source: trayItem ? holder.resolveTrayIcon(trayItem.icon) : ""
+                        sourceSize.width: Theme.dp(36)
+                        sourceSize.height: Theme.dp(36)
+                        smooth: true
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                    }
+                }
+            }
+            StateLayer {
+                id: verticalTrayArea
+                anchors.fill: parent
+                radius: Theme.radiusSm
+                onEntered: holder.tip(verticalTrayArea, "Системный трей — клик, чтобы открыть")
+                onExited: holder.untip(verticalTrayArea)
+                onClicked: if (holder.shell) holder.shell.toggleTray()
+            }
+        }
+    }
+
+    ColumnLayout {
+        id: verticalColumn
+        visible: holder.mode === "idle" && holder.isVertical
+        anchors.centerIn: parent
+        spacing: Theme.dp(5)
+
+        Repeater {
+            model: holder.verticalOrder
+            delegate: Loader {
+                id: verticalChipLoader
+                required property string modelData
+                readonly property bool chipShown: holder.mode === "idle" && holder.isVertical
+                    && (modelData === "media" ? holder.player !== null
+                    : modelData === "clock" ? Prefs.islandClock
+                    : modelData === "weather" ? Prefs.islandWeather
+                    : modelData === "go" ? Prefs.islandGo
+                    : modelData === "battery" ? holder.showBattery
+                    : modelData === "kb" ? holder.showLayout
+                    : modelData === "ws" ? Prefs.islandWorkspaces
+                    : Prefs.islandTray && holder.trayItems.length > 0)
+                active: chipShown
+                visible: chipShown
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: item ? item.implicitWidth : 0
+                Layout.preferredHeight: item ? item.implicitHeight : 0
+                sourceComponent: modelData === "media" ? verticalMediaChip
+                    : modelData === "clock" ? verticalClockChip
+                    : modelData === "weather" ? verticalWeatherChip
+                    : modelData === "go" ? verticalGoChip
+                    : modelData === "battery" ? verticalBatteryChip
+                    : modelData === "kb" ? verticalLayoutChip
+                    : modelData === "ws" ? verticalWorkspaceChip
+                    : verticalTrayChip
             }
         }
     }

@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -24,17 +23,57 @@ PanelWindow {
 
     screen: modelData
     color: "transparent"
-    anchors { top: true; left: true; right: true }
-    // Полоска под остров зарезервирована ровно по капсулу (6 + 34), чтобы
-    // максимизированные окна не заезжали под неё; отступ снизу даёт само окно.
-    // В fullscreen остров скрывается и зона не держится.
-    exclusiveZone: win.fullscreenActive ? 0 : Theme.topReserve
-    implicitHeight: Math.max(664, win.panelMax + Theme.dp(16))
-    WlrLayershell.layer: WlrLayer.Overlay
+    readonly property string islandPos: {
+        const pos = String(Prefs.islandPos || "top");
+        return pos === "bottom" || pos === "left" || pos === "right" ? pos : "top";
+    }
+    readonly property bool islandAtTop: win.islandPos === "top"
+    readonly property bool islandAtBottom: win.islandPos === "bottom"
+    readonly property bool islandAtLeft: win.islandPos === "left"
+    readonly property bool islandAtRight: win.islandPos === "right"
+    readonly property bool islandVertical: win.islandAtLeft || win.islandAtRight
+    readonly property int islandThickness: Theme.dp(Math.max(1, Prefs.islandHeight))
+    readonly property int islandGap: Theme.dp(Math.max(0, Prefs.islandGap))
+    readonly property int revealSize: Theme.dp(5)
+    readonly property bool islandAutoHide: Prefs.islandAutoHide === true
+    readonly property real notchRadius: Theme.dp(Math.max(0, Prefs.notchFlare))
+
+    // Окно — полоса по кромке капсулы, а не весь экран: Umbriel дублирует
+    // полноэкранную layer-поверхность при непустом exclusiveZone.
+    // Крепимся только к своей кромке — композитор центрирует окно по другой
+    // оси (как у Panacea). Растянутая поверхность + exclusiveZone заставляет
+    // Umbriel рисовать содержимое дважды.
+    anchors {
+        top: win.islandAtTop
+        bottom: win.islandAtBottom
+        left: win.islandAtLeft
+        right: win.islandAtRight
+    }
+    // Поперечный размер окна — с запасом под раскрытую панель и тень.
+    readonly property real stripExtent: Math.min(
+        win.islandVertical ? (win.screen ? win.screen.width : 1920) : (win.screen ? win.screen.height : 1080),
+        Math.max(Theme.dp(664), win.panelHeightMax + Theme.dp(80)))
+    implicitWidth: win.islandVertical ? win.stripExtent
+        : Math.min(win.screen ? win.screen.width : 1920, Theme.dp(1024))
+    implicitHeight: win.islandVertical
+        ? Math.min(win.screen ? win.screen.height : 1080, Theme.dp(1024))
+        : win.stripExtent
+    // Резерв не запрашиваем: Umbriel рисует поверхность с exclusiveZone
+    // дважды (сдвиг на толщину), а капсула и так парит над окнами —
+    // как pillOverlay=true у Panacea.
+    exclusiveZone: 0
+    WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "oberon-island"
     WlrLayershell.keyboardFocus: (view === "launcher" || view === "panel" || view === "taskman" || view === "tray")
         ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-    mask: Region { item: pill; radius: pill.radius }
+    mask: Region {
+        item: pill
+        radius: pill.radius
+        Region {
+            item: win.islandAutoHide ? revealStrip : null
+            intersection: Intersection.Combine
+        }
+    }
 
     readonly property bool isActiveOutput: !win.screen || Umbriel.activeOutput === ""
         || win.screen.name === Umbriel.activeOutput
@@ -71,14 +110,22 @@ PanelWindow {
         l: Theme.dp(820),
         xl: Theme.dp(860)
     })
-    readonly property int panelW: {
+    readonly property int panelBaseW: {
         const rawW = win.view === "taskman" ? Theme.dp(960)
             : win.view === "tray" ? Theme.dp(360)
             : win.view === "launcher" ? ((win.shell && win.shell.launcherTab === "packages") ? Theme.dp(820) : Theme.dp(680))
             : win.view === "panel" ? win.sizeClasses[win.pageSizes[win.page] || "s"]
             : Theme.dp(440);
-        return win.width > 0 ? Math.min(rawW, win.width - Theme.dp(24)) : rawW;
+        return rawW;
     }
+    readonly property int panelW: {
+        const screenWidth = win.screen ? win.screen.width : 1920;
+        const screenLimit = Math.max(Theme.dp(1), screenWidth - Theme.dp(24));
+        const prefLimit = Prefs.islandExpandedWidth > 0
+            ? Theme.dp(Prefs.islandExpandedWidth) : win.panelBaseW;
+        return Math.max(Theme.dp(1), Math.min(win.panelBaseW, prefLimit, screenLimit));
+    }
+    readonly property int panelContentW: Math.max(Theme.dp(1), win.panelW - Theme.dp(32))
     // активное окно во весь экран на этом output → остров уступает игрушке
     readonly property bool fullscreenActive: win.screen
         ? Umbriel.fullscreenFor(win.screen.name) : false
@@ -89,14 +136,31 @@ PanelWindow {
     // Максимальная высота панели: 82% экрана, чтобы высокие страницы (обои,
     // настройки, пакеты, диспетчер) помещались свободно.
     readonly property real panelMax: Math.max(360, Math.round((win.screen ? win.screen.height : 900) * 0.82))
+    // 0 означает прежний динамический предел (82% экрана); заданное значение
+    // лишь дополнительно ограничивает высоту открытой капсулы.
+    readonly property real panelHeightMax: Math.min(win.panelMax,
+        Prefs.islandExpandedHeight > 0 ? Theme.dp(Prefs.islandExpandedHeight) : win.panelMax)
 
-    // ── Ключи редизайна острова: barStyle / islandOrder / islandAllScreens ──
-    // Теперь живут в Prefs (JsonAdapter); чтение защитное: не «notch» → island,
-    // не массив → дефолтный порядок, не true → false.
+    // ── Настройки капсулы; barStyle оставлен для старых конфигов/IPC ───────
     readonly property string barStyle: Prefs.barStyle === "notch" ? "notch" : "island"
-    readonly property bool notch: win.barStyle === "notch"
+    // Prefs мигрирует legacy barStyle="notch" в этот переключатель; дальше
+    // notchMode — источник истины, чтобы его можно было выключить независимо.
+    readonly property bool notch: Prefs.notchMode === true
+    readonly property real edgeGap: win.notch ? 0 : win.islandGap
     readonly property var islandOrder: Prefs.islandOrder
     readonly property bool islandAllScreens: Prefs.islandAllScreens === true
+
+    // При автоскрытии оставляем только тонкий край для повторного наведения.
+    readonly property bool revealHeld: revealHover.hovered || revealHoldTimer.running
+        || collapseTimer.running || capsuleRevealHover.hovered
+    readonly property bool pillHidden: win.islandAutoHide && !win.big
+        && !win.transientHereNow && !win.revealHeld
+
+    function openPanelFromPill() {
+        if (!win.shell || win.big || win.mode !== "idle")
+            return;
+        win.shell.openPanel();
+    }
 
     property date now: new Date()
     Timer { interval: 1000; running: true; repeat: true; onTriggered: win.now = new Date() }
@@ -149,6 +213,34 @@ PanelWindow {
         z: 50
     }
 
+    // Узкий edge-trigger возвращает спрятанный остров. Короткая задержка
+    // удерживает его на виду, пока курсор проходит gap до капсулы.
+    Item {
+        id: revealStrip
+        visible: win.islandAutoHide
+        z: 100
+        x: win.islandVertical ? (win.islandAtRight ? parent.width - win.revealSize : 0) : 0
+        y: win.islandVertical ? 0 : (win.islandAtBottom ? parent.height - win.revealSize : 0)
+        width: win.islandVertical ? win.revealSize : parent.width
+        height: win.islandVertical ? parent.height : win.revealSize
+
+        HoverHandler {
+            id: revealHover
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onHoveredChanged: {
+                if (hovered)
+                    revealHoldTimer.restart();
+                else if (!capsuleRevealHover.hovered)
+                    revealHoldTimer.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: revealHoldTimer
+        interval: 360
+    }
+
     // Настоящая тень: обёртка с запасом, layer.effect рисует капсулу
     // с гауссовой тенью (в Umbriel теней слоёв нет — делаем сами).
     Item {
@@ -156,12 +248,24 @@ PanelWindow {
         readonly property int padH: Theme.dp(30)
         readonly property int padTop: Theme.dp(10)
         readonly property int padBottom: Theme.dp(24)
-
-        x: Math.round((parent.width - width) / 2)
-        // notch: капсула прижата к верхней кромке (y=0)
-        y: (win.notch ? 0 : Theme.dp(6)) - padTop
-        width: pill.width + padH * 2
-        height: pill.height + padTop + padBottom
+        readonly property real targetPillX: win.islandAtLeft
+            ? (win.pillHidden ? -pill.width + win.revealSize : win.edgeGap)
+            : (win.pillHidden ? parent.width - win.revealSize : parent.width - win.edgeGap - pill.width)
+        readonly property real targetPillY: win.islandAtTop
+            ? (win.pillHidden ? -pill.height + win.revealSize : win.edgeGap)
+            : (win.pillHidden ? parent.height - win.revealSize : parent.height - win.edgeGap - pill.height)
+        x: win.islandVertical ? targetPillX - padTop : Math.round((parent.width - width) / 2)
+        y: win.islandVertical ? Math.round((parent.height - height) / 2) : targetPillY - padTop
+        width: pill.width + (win.islandVertical ? padTop + padBottom : padH * 2)
+        height: pill.height + (win.islandVertical ? padH * 2 : padTop + padBottom)
+        Behavior on x {
+            enabled: win.islandAutoHide && !win.big
+            NumberAnimation { duration: Theme.durShort; easing.type: Easing.OutCubic }
+        }
+        Behavior on y {
+            enabled: win.islandAutoHide && !win.big
+            NumberAnimation { duration: Theme.durShort; easing.type: Easing.OutCubic }
+        }
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
@@ -176,16 +280,42 @@ PanelWindow {
 
         Rectangle {
             id: pill
-            x: shadowHost.padH
-            y: shadowHost.padTop
-            width: win.big ? win.panelW : (idlePill.implicitWidth + Theme.dp(12) * 2)
-            height: win.big ? Math.min(contentCol.implicitHeight + panelFace.headerSpace + Theme.dp(32), win.panelMax) : Math.max(Theme.dp(34), idlePill.implicitHeight + Theme.dp(6))
+            x: win.islandVertical ? shadowHost.padTop : shadowHost.padH
+            y: win.islandVertical ? shadowHost.padH : shadowHost.padTop
+            readonly property real collapsedLength: {
+                const contentLength = win.islandVertical
+                    ? idlePill.implicitHeight + Theme.dp(24)
+                    : idlePill.implicitWidth + Theme.dp(24);
+                const minLength = Theme.dp(Math.max(0, Prefs.islandWidth));
+                return pill.evenUp(Math.max(contentLength, minLength));
+            }
+            function evenUp(value) { return Math.round(value / 2) * 2; }
+            readonly property real fullRadius: win.big
+                ? (win.mode === "launcher" ? Theme.shapeXlInc : Theme.radiusXl)
+                : Math.min(width, height) / 2
+            readonly property real attachedRadius: {
+                if (win.notch)
+                    return 0;
+                if (win.big)
+                    return pill.fullRadius;
+                const configured = Math.max(0, Prefs.islandRadius);
+                const radius = configured > 0 ? Theme.dp(configured)
+                    : (win.islandVertical ? width : height) / 2;
+                return Math.min(radius, pill.fullRadius);
+            }
+            width: win.big ? win.panelW : win.islandVertical ? win.islandThickness : pill.collapsedLength
+            height: win.big ? Math.min(contentCol.implicitHeight + panelFace.headerSpace + Theme.dp(32), win.panelHeightMax)
+                : win.islandVertical ? pill.collapsedLength
+                : win.mode === "idle" ? win.islandThickness
+                : Math.max(win.islandThickness, idlePill.implicitHeight + Theme.dp(6))
             // idle — Lucid-пилюля (radiusPill), панель — крупный скруглённый
             // контейнер (radiusXl / shapeXlInc для лончера). Без обводки.
-            // notch: капсула прижата к кромке — верхние углы прямые, низ полный
-            radius: win.big ? (win.mode === "launcher" ? Theme.shapeXlInc : Theme.radiusXl) : height / 2
-            topLeftRadius: win.notch ? 0 : radius
-            topRightRadius: win.notch ? 0 : radius
+            // Прижатая сторона получает свой радиус, остальные остаются полными.
+            radius: pill.fullRadius
+            topLeftRadius: win.islandAtTop || win.islandAtLeft ? pill.attachedRadius : pill.fullRadius
+            topRightRadius: win.islandAtTop || win.islandAtRight ? pill.attachedRadius : pill.fullRadius
+            bottomLeftRadius: win.islandAtBottom || win.islandAtLeft ? pill.attachedRadius : pill.fullRadius
+            bottomRightRadius: win.islandAtBottom || win.islandAtRight ? pill.attachedRadius : pill.fullRadius
             color: win.big ? Theme.withBlur(Theme.mContainer) : Theme.bg
             clip: true
             // OPEN — emphasizedDecel @ durEnter, CLOSE — emphasizedAccel @ durExit
@@ -194,7 +324,34 @@ PanelWindow {
             Behavior on radius { NumberAnimation { duration: win.big ? Theme.durEnter : Theme.durExit; easing.type: Easing.Bezier; easing.bezierCurve: win.big ? Theme.easeEmphasizedDecel : Theme.easeEmphasizedAccel } }
             Behavior on topLeftRadius { NumberAnimation { duration: win.big ? Theme.durEnter : Theme.durExit; easing.type: Easing.Bezier; easing.bezierCurve: win.big ? Theme.easeEmphasizedDecel : Theme.easeEmphasizedAccel } }
             Behavior on topRightRadius { NumberAnimation { duration: win.big ? Theme.durEnter : Theme.durExit; easing.type: Easing.Bezier; easing.bezierCurve: win.big ? Theme.easeEmphasizedDecel : Theme.easeEmphasizedAccel } }
+            Behavior on bottomLeftRadius { NumberAnimation { duration: win.big ? Theme.durEnter : Theme.durExit; easing.type: Easing.Bezier; easing.bezierCurve: win.big ? Theme.easeEmphasizedDecel : Theme.easeEmphasizedAccel } }
+            Behavior on bottomRightRadius { NumberAnimation { duration: win.big ? Theme.durEnter : Theme.durExit; easing.type: Easing.Bezier; easing.bezierCurve: win.big ? Theme.easeEmphasizedDecel : Theme.easeEmphasizedAccel } }
             Behavior on color { ColorAnimation { duration: win.big ? Theme.durEnter : Theme.durExit } }
+
+            // Щелчок по свободной части капсулы открывает компактную панель.
+            MouseArea {
+                anchors.fill: parent
+                z: -1
+                enabled: !win.big && win.mode === "idle"
+                cursorShape: Qt.PointingHandCursor
+                onClicked: win.openPanelFromPill()
+            }
+
+            // Auto-hide only: keep the collapsed capsule present under the
+            // pointer. This handler never opens or expands the panel.
+            HoverHandler {
+                id: capsuleRevealHover
+                enabled: win.islandAutoHide
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onHoveredChanged: {
+                    if (hovered) {
+                        collapseTimer.stop();
+                        revealHoldTimer.stop();
+                    } else if (!revealHover.hovered) {
+                        collapseTimer.restart();
+                    }
+                }
+            }
 
             // ── IDLE / OSD / NOTIF ─────────────────────────────────────
             // компактное лицо: при открытии панели съёживается (0.82) и гаснет,
@@ -216,6 +373,10 @@ PanelWindow {
                     now: win.now
                     output: win.screen.name
                     shell: win.shell
+                    isVertical: win.islandVertical
+                    player: win.player
+                    battery: win.battery
+                    showBattery: win.showBattery
                     orderProp: win.islandOrder
                     tipHost: chipTip
                 }
@@ -262,7 +423,7 @@ PanelWindow {
         RowLayout {
             id: panelHeader
             visible: win.mode === "panel" || win.mode === "tray"
-            width: win.panelW - Theme.dp(32)
+            width: win.panelContentW
             height: Theme.dp(52)
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
@@ -316,8 +477,9 @@ PanelWindow {
 
         Flickable {
             id: panelView
-            width: win.panelW - Theme.dp(32)
-            height: Math.min(contentCol.implicitHeight, win.panelMax - Theme.dp(32) - panelFace.headerSpace)
+            width: win.panelContentW
+            height: Math.max(0, Math.min(contentCol.implicitHeight,
+                win.panelHeightMax - Theme.dp(32) - panelFace.headerSpace))
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: Theme.dp(16) + panelFace.headerSpace
@@ -375,102 +537,48 @@ PanelWindow {
         }
     }
 
-    // ── Notch «плавники» (порт lucidbar/BarFlare.qml) ──────────────────
-    // Четверть-круги цвета фона по бокам капсулы, смыкающиеся с верхней
-    // кромкой экрана: слева — прямой, справа — зеркальный (transform -1).
-    Item {
-        id: flares
-        visible: win.notch && !win.big
+    Timer {
+        id: collapseTimer
+        interval: 180
+    }
 
-        x: shadowHost.x + pill.x
-        y: shadowHost.y + pill.y
-
-
-        readonly property real bite: 0.5
-        readonly property real finSize: Theme.dp(14)
-
-        // левый (прямой)
-        Item {
-            x: -flares.finSize + flares.bite
-            y: 0
-            width: flares.finSize
-            height: flares.finSize
-
-            Shape {
-                anchors.fill: parent
-                preferredRendererType: Shape.CurveRenderer
-                antialiasing: true
-
-                ShapePath {
-                    strokeWidth: 0
-                    fillColor: Theme.bg
-                    startX: flares.finSize
-                    startY: flares.finSize
-
-                    PathArc {
-                        x: 0
-                        y: 0
-                        radiusX: flares.finSize
-                        radiusY: flares.finSize
-                        direction: PathArc.Counterclockwise
-                    }
-
-                    PathLine {
-                        x: flares.finSize
-                        y: 0
-                    }
-
-                    PathLine {
-                        x: flares.finSize
-                        y: flares.finSize
-                    }
-                }
-            }
+    // Вогнутые уголки примыкания: по бокам горизонтальной капсулы, а у
+    // вертикальной — над и под ней. barStyle="notch" остаётся совместимым.
+    NotchCorner {
+        id: notchBefore
+        visible: win.notch && !win.big && !win.pillHidden
+        side: win.islandVertical ? (win.islandAtLeft ? "right" : "left") : "left"
+        fill: Theme.bg
+        r: win.notchRadius
+        transform: Scale {
+            origin.y: notchBefore.r / 2
+            yScale: win.islandVertical ? -1 : (win.islandAtBottom ? -1 : 1)
         }
-
-        // правый (зеркальный, как BarFlare с mirrored: true)
-        Item {
-            x: pill.width - flares.bite
-            y: 0
-            width: flares.finSize
-            height: flares.finSize
-
-            Shape {
-                anchors.fill: parent
-                preferredRendererType: Shape.CurveRenderer
-                antialiasing: true
-
-                transform: Scale {
-                    xScale: -1
-                    origin.x: flares.finSize / 2
-                }
-
-                ShapePath {
-                    strokeWidth: 0
-                    fillColor: Theme.bg
-                    startX: flares.finSize
-                    startY: flares.finSize
-
-                    PathArc {
-                        x: 0
-                        y: 0
-                        radiusX: flares.finSize
-                        radiusY: flares.finSize
-                        direction: PathArc.Counterclockwise
-                    }
-
-                    PathLine {
-                        x: flares.finSize
-                        y: 0
-                    }
-
-                    PathLine {
-                        x: flares.finSize
-                        y: flares.finSize
-                    }
-                }
-            }
+        x: win.islandAtLeft ? 0
+         : win.islandAtRight ? win.width - width
+         : Math.round(shadowHost.x + pill.x) - width
+        y: win.islandVertical ? Math.round(shadowHost.y + pill.y) - height
+         : win.islandAtBottom ? win.height - height : 0
+        opacity: visible ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.durFastEffects } }
+    }
+    NotchCorner {
+        id: notchAfter
+        visible: win.notch && !win.big && !win.pillHidden
+        side: win.islandVertical ? (win.islandAtLeft ? "right" : "left") : "right"
+        fill: Theme.bg
+        r: win.notchRadius
+        transform: Scale {
+            origin.y: notchAfter.r / 2
+            yScale: win.islandVertical ? 1 : (win.islandAtBottom ? -1 : 1)
         }
+        x: win.islandAtLeft ? 0
+         : win.islandAtRight ? win.width - width
+         : Math.round(shadowHost.x + pill.x + pill.width)
+        y: win.islandVertical ? Math.round(shadowHost.y + pill.y + pill.height)
+         : win.islandAtBottom ? win.height - height : 0
+        opacity: visible ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.durFastEffects } }
     }
 
     readonly property var pageTitles: ({

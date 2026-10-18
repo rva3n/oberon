@@ -50,6 +50,18 @@ Singleton {
         islandOrder: ["kb", "weather", "ws", "clock", "tray"],
         islandAllScreens: false,
         barStyle: "island",
+        islandPos: "top",
+        islandHeight: 34,
+        islandWidth: 0,
+        islandExpandedWidth: 960,
+        islandExpandedHeight: 0,
+        islandGap: 6,
+        islandRadius: 17,
+        notchMode: false,
+        notchFlare: 12,
+        islandAutoHide: false,
+        islandDrag: false,
+        systemLoadOnIsland: false,
         mediaStyle: "cover",
         soundsEnabled: true,
         nightLightEnabled: false,
@@ -157,6 +169,18 @@ Singleton {
             property var islandOrder: ["kb", "weather", "ws", "clock", "tray"]
             property bool islandAllScreens: false
             property string barStyle: "island"
+            property string islandPos: "top"
+            property int islandHeight: 34
+            property int islandWidth: 0
+            property int islandExpandedWidth: 960
+            property int islandExpandedHeight: 0
+            property int islandGap: 6
+            property int islandRadius: 17
+            property bool notchMode: false
+            property int notchFlare: 12
+            property bool islandAutoHide: false
+            property bool islandDrag: false
+            property bool systemLoadOnIsland: false
             property string mediaStyle: "cover"
             property bool soundsEnabled: true
             property bool nightLightEnabled: false
@@ -256,6 +280,18 @@ Singleton {
     readonly property var islandOrder: a.islandOrder
     readonly property bool islandAllScreens: a.islandAllScreens
     readonly property string barStyle: a.barStyle
+    readonly property string islandPos: a.islandPos
+    readonly property int islandHeight: a.islandHeight
+    readonly property int islandWidth: a.islandWidth
+    readonly property int islandExpandedWidth: a.islandExpandedWidth
+    readonly property int islandExpandedHeight: a.islandExpandedHeight
+    readonly property int islandGap: a.islandGap
+    readonly property int islandRadius: a.islandRadius
+    readonly property bool notchMode: a.notchMode
+    readonly property int notchFlare: a.notchFlare
+    readonly property bool islandAutoHide: a.islandAutoHide
+    readonly property bool islandDrag: a.islandDrag
+    readonly property bool systemLoadOnIsland: a.systemLoadOnIsland
     readonly property string mediaStyle: a.mediaStyle
     readonly property bool soundsEnabled: a.soundsEnabled
     readonly property bool nightLightEnabled: a.nightLightEnabled
@@ -326,9 +362,18 @@ Singleton {
         let cur = {};
         try { cur = JSON.parse(file.text() || "{}"); } catch (e) { cur = {}; }
         let fixed = false;
+        // writeAdapter сериализует весь адаптер, а не только новые поля.
+        // Сначала заносим уже существующие значения из JSON обратно в него,
+        // чтобы добавление дефолтов не перезаписало legacy-настройки.
+        for (const k of Object.keys(cur))
+            if (k in d)
+                a[k] = cur[k];
         for (const k of Object.keys(d)) {
             if (!(k in cur)) {
-                a[k] = d[k];
+                // barStyle="notch" существовал до отдельного переключателя;
+                // переносим его только при отсутствии нового ключа, не меняя
+                // ни исходный barStyle, ни явно заданный notchMode.
+                a[k] = k === "notchMode" && cur.barStyle === "notch" ? true : d[k];
                 fixed = true;
             }
         }
