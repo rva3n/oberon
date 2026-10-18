@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import "../../core"
 import "../../ui"
 import ".."
@@ -14,6 +15,14 @@ ColumnLayout {
     id: volumePage
 
     property var win: null
+    property var audioState: ({ apps: [], sources: [], sinks: [], defaultSink: "", defaultSource: "" })
+    property string audioOutput: ""
+    property int micVolumePct: 0
+    property bool isUserDragging: false
+    property var actionQueue: []
+    property var pendingActions: ({})
+
+    readonly property string scriptPath: Quickshell.env("HOME") + "/oberon/scripts/audio_streams.sh"
 
     visible: win !== null && win.mode === "panel" && win.page === "volume"
     Layout.fillWidth: true
@@ -38,13 +47,13 @@ ColumnLayout {
     function iconFor(n) {
         if (!n) return "";
         const p = n.properties || {};
-        const direct = p["application.icon.name"];
+        const direct = n.icon || p["application.icon.name"] || p["application.icon_name"] || p["application.icon-name"];
         if (direct) {
             const dp = Quickshell.iconPath(String(direct), true);
             if (dp !== "") return dp;
         }
         const ix = volumePage.iconIndex;
-        const keys = [p["application.name"], p["application.process.binary"],
+        const keys = [n.app, n.binary, p["application.name"], p["application.process.binary"],
                       n.description, n.name];
         for (const raw of keys) {
             const k = String(raw || "").toLowerCase();
@@ -61,8 +70,104 @@ ColumnLayout {
     function streamName(n) {
         if (!n) return "";
         const p = n.properties || {};
-        return p["application.name"] || n.description || n.name || "";
+        return n.app || p["application.name"] || n.name || n.description || "";
     }
+
+    readonly property var defaultMic: {
+        const sources = volumePage.audioState.sources || [];
+        for (const source of sources)
+            if (String(source.name) === String(volumePage.audioState.defaultSource)) return source;
+        return null;
+    }
+
+    function refreshAudio() {
+        if (!volumePage.visible || audioListProc.running || audioActionProc.running
+                || volumePage.actionQueue.length > 0 || volumePage.isUserDragging)
+            return;
+        volumePage.audioOutput = "";
+        audioListProc.running = true;
+    }
+
+    function finishAudioRefresh(exitCode) {
+        const output = volumePage.audioOutput.trim();
+        volumePage.audioOutput = "";
+        if (exitCode !== 0 || volumePage.isUserDragging || output === "") return;
+        try {
+            const data = JSON.parse(output);
+            volumePage.audioState = {
+                apps: Array.isArray(data.apps) ? data.apps : [],
+                sinks: Array.isArray(data.sinks) ? data.sinks : [],
+                sources: Array.isArray(data.sources) ? data.sources : [],
+                defaultSink: String(data.defaultSink || ""),
+                defaultSource: String(data.defaultSource || "")
+            };
+            const mic = volumePage.defaultMic;
+            volumePage.micVolumePct = mic
+                    ? Math.max(0, Math.min(100, Math.round(Number(mic.volume) || 0))) : 0;
+        } catch (e) {}
+    }
+
+    function queueAudioAction(key, args) {
+        const queue = volumePage.actionQueue.slice();
+        const pending = Object.assign({}, volumePage.pendingActions);
+        if (queue.indexOf(key) === -1) queue.push(key);
+        pending[key] = args;
+        volumePage.actionQueue = queue;
+        volumePage.pendingActions = pending;
+        volumePage.runNextAudioAction();
+    }
+
+    function runNextAudioAction() {
+        if (audioActionProc.running || volumePage.actionQueue.length === 0) return;
+        const key = volumePage.actionQueue[0];
+        const pending = Object.assign({}, volumePage.pendingActions);
+        const args = pending[key] || [];
+        delete pending[key];
+        volumePage.actionQueue = volumePage.actionQueue.slice(1);
+        volumePage.pendingActions = pending;
+        audioActionProc.actionArgs = args;
+        audioActionProc.running = true;
+    }
+
+    function setAppVolume(index, pct) {
+        const id = Number(index);
+        if (!isFinite(id) || Math.floor(id) !== id || id < 0) return;
+        const value = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+        volumePage.queueAudioAction("app-volume-" + id,
+            ["set-app-volume", String(id), String(value)]);
+    }
+
+    function toggleAppMute(index) {
+        const id = Number(index);
+        if (!isFinite(id) || Math.floor(id) !== id || id < 0) return;
+        volumePage.queueAudioAction("app-mute-" + id, ["toggle-app-mute", String(id)]);
+    }
+
+    function setDefaultSink(id) {
+        volumePage.queueAudioAction("default-sink", ["set-default-sink", String(id)]);
+    }
+
+    function setDefaultSource(id) {
+        volumePage.queueAudioAction("default-source", ["set-default-source", String(id)]);
+    }
+
+    function setMicVolume(pct) {
+        if (!volumePage.defaultMic) return;
+        const value = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+        volumePage.queueAudioAction("mic-volume", ["mic-volume", String(value)]);
+    }
+
+    function setMicMute(muted) {
+        if (!volumePage.defaultMic) return;
+        volumePage.queueAudioAction("mic-mute", ["mic-mute", muted ? "on" : "off"]);
+    }
+
+    onVisibleChanged: {
+        if (visible) volumePage.refreshAudio();
+        else volumePage.isUserDragging = false;
+    }
+
+    Component.onCompleted: if (volumePage.visible) volumePage.refreshAudio()
 
     // иконка устройства по имени/порту — наушники/HDMI/колонка
     function devIcon(n) {
@@ -80,14 +185,7 @@ ColumnLayout {
         return "middle";
     }
 
-    // playback-потоки: isStream && isSink; capture-потоки: isStream && !isSink
-    readonly property var playbackStreams: {
-        const out = [];
-        const ss = volumePage.win ? volumePage.win.streams : null;
-        if (!ss) return out;
-        for (const n of ss) if (n.isSink) out.push(n);
-        return out;
-    }
+    // входящие потоки: isStream && !isSink
     readonly property var captureStreams: {
         const out = [];
         const ss = volumePage.win ? volumePage.win.streams : null;
@@ -122,7 +220,7 @@ ColumnLayout {
             Repeater {
                 id: outRep
 
-                model: volumePage.win ? volumePage.win.outputs : []
+                model: volumePage.audioState.sinks
 
                 delegate: DeviceRow {
                     required property var modelData
@@ -132,8 +230,8 @@ ColumnLayout {
                     icon: volumePage.devIcon(modelData)
                     devName: modelData.description || modelData.name
                     position: volumePage.groupPos(index, outRep.count)
-                    selected: !!(volumePage.win && volumePage.win.sink && volumePage.win.sink.id === modelData.id)
-                    onClicked: Sys.setDefaultAudio(modelData.id)
+                    selected: volumePage.audioState.defaultSink === String(modelData.name)
+                    onClicked: volumePage.setDefaultSink(modelData.id)
                 }
             }
 
@@ -153,6 +251,36 @@ ColumnLayout {
         Layout.fillWidth: true
         title: "Микрофон"
 
+        RowLayout {
+            visible: volumePage.defaultMic !== null
+            Layout.fillWidth: true
+            spacing: Theme.dp(4)
+
+            SliderRow {
+                Layout.fillWidth: true
+                icon: "mic"
+                value: volumePage.micVolumePct / 100
+                onMoved: (v) => {
+                    volumePage.isUserDragging = true;
+                    volumePage.micVolumePct = Math.round(v * 100);
+                    volumePage.setMicVolume(volumePage.micVolumePct);
+                }
+                onCommitted: (v) => {
+                    volumePage.micVolumePct = Math.round(v * 100);
+                    volumePage.setMicVolume(volumePage.micVolumePct);
+                    volumePage.isUserDragging = false;
+                    quickRefresh.restart();
+                }
+            }
+
+            IconButton {
+                Layout.alignment: Qt.AlignVCenter
+                icon: volumePage.defaultMic && volumePage.defaultMic.mute ? "mic_off" : "mic"
+                tooltip: volumePage.defaultMic && volumePage.defaultMic.mute ? "Включить микрофон" : "Выключить микрофон"
+                onClicked: if (volumePage.defaultMic) volumePage.setMicMute(!volumePage.defaultMic.mute)
+            }
+        }
+
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 0
@@ -160,7 +288,7 @@ ColumnLayout {
             Repeater {
                 id: inRep
 
-                model: volumePage.win ? volumePage.win.inputs : []
+                model: volumePage.audioState.sources
 
                 delegate: DeviceRow {
                     required property var modelData
@@ -170,8 +298,8 @@ ColumnLayout {
                     icon: "mic"
                     devName: modelData.description || modelData.name
                     position: volumePage.groupPos(index, inRep.count)
-                    selected: !!(volumePage.win && volumePage.win.source && volumePage.win.source.id === modelData.id)
-                    onClicked: Sys.setDefaultAudio(modelData.id)
+                    selected: volumePage.audioState.defaultSource === String(modelData.name)
+                    onClicked: volumePage.setDefaultSource(modelData.id)
                 }
             }
 
@@ -186,25 +314,31 @@ ColumnLayout {
         }
     }
 
-    // громкость воспроизводящих приложений (playback: isStream && isSink)
+    // микшер sink-inputs (активные потоки playback) из pactl
     Card {
         Layout.fillWidth: true
         title: "Приложения"
 
         LText { // пустое состояние — карточка всегда на виду
-            visible: volumePage.playbackStreams.length === 0
+            visible: volumePage.audioState.apps.length === 0
             Layout.fillWidth: true
             Layout.topMargin: Theme.dp(4)
             role: "bodySmall"
             color: Theme.subtextDim
-            text: "Ничего не воспроизводится"
+            text: "Нет активных приложений"
         }
 
         Repeater {
-            model: volumePage.playbackStreams
+            model: volumePage.audioState.apps
 
             delegate: Item {
+                id: appRow
+
                 required property var modelData
+                property int currentVolumePct: Math.max(0, Math.min(100, Math.round(Number(modelData.volume) || 0)))
+                readonly property bool isMuted: !!modelData.mute
+                onModelDataChanged: currentVolumePct = Math.max(0, Math.min(100,
+                    Math.round(Number(modelData.volume) || 0)))
 
                 Layout.fillWidth: true
                 implicitHeight: Theme.dp(56)
@@ -222,7 +356,7 @@ ColumnLayout {
                         radius: Theme.rad(12)
                         color: Theme.bgTrack
 
-                        readonly property string iconPath: volumePage.iconFor(modelData)
+                        readonly property string iconPath: volumePage.iconFor(appRow.modelData)
 
                         Icon {
                             anchors.centerIn: parent
@@ -250,12 +384,12 @@ ColumnLayout {
                             weight: 480
                             color: Theme.text
                             elide: Text.ElideRight
-                            text: volumePage.streamName(modelData)
+                            text: volumePage.streamName(appRow.modelData)
                         }
 
                         LText {
                             Layout.fillWidth: true
-                            visible: !!(modelData.audio && modelData.audio.muted)
+                            visible: appRow.isMuted
                             role: "bodySmall"
                             color: Theme.subtext
                             text: "Без звука"
@@ -265,9 +399,24 @@ ColumnLayout {
                     Slider {
                         Layout.fillWidth: true
                         size: "s"
-                        value: modelData.audio ? modelData.audio.volume : 0
-                        onMoved: (v) => { if (modelData.audio) modelData.audio.volume = v; }
-                        onCommitted: (v) => { if (modelData.audio) modelData.audio.volume = v; }
+                        from: 0
+                        to: 1
+                        value: appRow.currentVolumePct / 100
+                        onMoved: (v) => {
+                            volumePage.isUserDragging = true;
+                            appRow.currentVolumePct = Math.round(v * 100);
+                            volumePage.setAppVolume(appRow.modelData.index, appRow.currentVolumePct);
+                        }
+                        onCommitted: (v) => {
+                            appRow.currentVolumePct = Math.round(v * 100);
+                            volumePage.setAppVolume(appRow.modelData.index, appRow.currentVolumePct);
+                            volumePage.isUserDragging = false;
+                            quickRefresh.restart();
+                        }
+                        onDraggingChanged: {
+                            volumePage.isUserDragging = dragging;
+                            if (!dragging) quickRefresh.restart();
+                        }
                     }
 
                     LText {
@@ -277,14 +426,14 @@ ColumnLayout {
                         role: "bodySmall"
                         tabular: true
                         color: Theme.subtext
-                        text: modelData.audio ? Math.round(modelData.audio.volume * 100) + "%" : "0%"
+                        text: appRow.currentVolumePct + "%"
                     }
 
                     IconButton {
                         Layout.alignment: Qt.AlignVCenter
                         size: "s"
-                        icon: (modelData.audio && modelData.audio.muted) ? "volume_off" : "volume_up"
-                        onClicked: { if (modelData.audio) modelData.audio.muted = !modelData.audio.muted; }
+                        icon: appRow.isMuted ? "volume_off" : "volume_up"
+                        onClicked: volumePage.toggleAppMute(appRow.modelData.index)
                     }
                 }
             }
@@ -394,5 +543,38 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    Process {
+        id: audioListProc
+        command: ["bash", volumePage.scriptPath, "list"]
+        stdout: SplitParser { onRead: line => volumePage.audioOutput += line + "\n" }
+        onExited: (exitCode) => volumePage.finishAudioRefresh(exitCode)
+    }
+
+    Process {
+        id: audioActionProc
+        property var actionArgs: []
+        command: ["bash", volumePage.scriptPath].concat(actionArgs)
+        onExited: {
+            volumePage.runNextAudioAction();
+            if (!audioActionProc.running && volumePage.actionQueue.length === 0)
+                quickRefresh.restart();
+        }
+    }
+
+    Timer {
+        id: audioRefreshTimer
+        interval: 1000
+        repeat: true
+        running: volumePage.visible
+        triggeredOnStart: true
+        onTriggered: volumePage.refreshAudio()
+    }
+
+    Timer {
+        id: quickRefresh
+        interval: 150
+        onTriggered: volumePage.refreshAudio()
     }
 }
