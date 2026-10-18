@@ -18,13 +18,16 @@ Item {
     property string selectedPreset: ""
     property string statusText: ""
     property string taskKind: ""
-    property string renameFrom: ""
+    property var queuedTaskArgs: []
+    property string queuedTaskKind: ""
     property string renameTarget: ""
     property string deleteCombo: ""
     property bool repeatEnabled: true
     property bool captureOpen: false
     property bool captureKeyDown: false
     property bool statusIsError: false
+    property bool statusIsWarning: false
+    property bool taskValidationWarning: false
     property bool hasBackup: false
     property var captureModifiers: []
     property string captureCombo: ""
@@ -73,14 +76,19 @@ Item {
     implicitHeight: content.implicitHeight
 
     function enterPage() {
-        page.statusText = ""
+        page.statusText = "";
         page.statusIsError = false;
+        page.statusIsWarning = false;
         page.runTask(["backup"], "initial-backup");
     }
 
     function runTask(args, kind) {
-        if (taskProc.running)
+        if (taskProc.running || page.queuedTaskKind !== "")
             return false;
+        if (kind === "write" || kind === "remove" || kind === "rename" || kind === "restore") {
+            page.taskValidationWarning = false;
+            page.statusIsWarning = false;
+        }
         taskProc.args = args;
         taskProc.kind = kind;
         taskProc.stdoutText = "";
@@ -88,6 +96,28 @@ Item {
         page.taskKind = kind;
         taskProc.running = true;
         return true;
+    }
+
+    function queueTask(args, kind) {
+        if (page.queuedTaskKind !== "")
+            return false;
+        page.queuedTaskArgs = args.slice();
+        page.queuedTaskKind = kind;
+        taskRestartTimer.restart();
+        return true;
+    }
+
+    function startQueuedTask() {
+        if (taskProc.running || page.queuedTaskKind === "")
+            return;
+        const args = page.queuedTaskArgs;
+        const kind = page.queuedTaskKind;
+        page.queuedTaskArgs = [];
+        page.queuedTaskKind = "";
+        if (!page.runTask(args, kind)) {
+            page.queuedTaskArgs = args;
+            page.queuedTaskKind = kind;
+        }
     }
 
     function finishTask(exitCode) {
@@ -101,6 +131,7 @@ Item {
             if (exitCode !== 0) {
                 page.statusText = errorOutput || "Не удалось прочитать сочетания клавиш.";
                 page.statusIsError = true;
+                page.statusIsWarning = false;
                 return;
             }
             try {
@@ -110,6 +141,7 @@ Item {
             } catch (error) {
                 page.statusText = "Скрипт вернул некорректный список сочетаний.";
                 page.statusIsError = true;
+                page.statusIsWarning = false;
             }
             return;
         }
@@ -119,28 +151,27 @@ Item {
             if (exitCode === 0) {
                 page.statusText = kind === "backup" ? "Резервная копия обновлена." : "Резервная копия готова.";
                 page.statusIsError = false;
+                page.statusIsWarning = false;
             } else {
                 page.statusText = errorOutput || "Не удалось создать резервную копию.";
                 page.statusIsError = true;
+                page.statusIsWarning = false;
             }
             if (kind === "initial-backup")
-                page.runTask(["list"], "list");
+                page.queueTask(["list"], "list");
             return;
         }
 
-        if (kind === "write" || kind === "remove" || kind === "rename-set"
-                || kind === "rename-remove" || kind === "restore") {
-            if (exitCode !== 0) {
+        if (kind === "write" || kind === "remove" || kind === "rename" || kind === "restore") {
+            const validatorUnavailable = exitCode === 2;
+            if (exitCode !== 0 && !validatorUnavailable) {
                 page.statusText = errorOutput || "Операция не прошла проверку конфигурации.";
                 page.statusIsError = true;
-                page.runTask(["list"], "list");
+                page.statusIsWarning = false;
+                page.queueTask(["list"], "list");
                 return;
             }
-            if (kind === "rename-set") {
-                page.runTask(["remove", page.renameFrom], "rename-remove");
-                return;
-            }
-            if (kind === "rename-remove") {
+            if (kind === "rename") {
                 page.editingKeys = page.renameTarget;
                 page.comboText = page.renameTarget;
             } else if (kind === "write") {
@@ -148,18 +179,33 @@ Item {
             } else if (kind === "remove" && page.deleteCombo === page.editingKeys) {
                 page.clearEditor();
             }
-            page.statusText = "Проверка пройдена — применяю изменения…";
+            page.taskValidationWarning = validatorUnavailable;
+            page.statusText = validatorUnavailable
+                ? "Записано, но не проверено: валидатор недоступен."
+                : "Проверка пройдена — применяю изменения…";
             page.statusIsError = false;
-            page.runTask(["apply"], "apply");
+            page.statusIsWarning = validatorUnavailable;
+            page.queueTask(["apply"], "apply");
             return;
         }
 
         if (kind === "apply") {
-            page.statusText = exitCode === 0
-                ? (output || "Изменения применены.")
-                : (errorOutput || "Не удалось применить изменения.");
-            page.statusIsError = exitCode !== 0;
-            page.runTask(["list"], "list");
+            if (exitCode === 2)
+                page.taskValidationWarning = true;
+            if (exitCode === 0 || exitCode === 2) {
+                page.statusText = page.taskValidationWarning
+                    ? "Записано, но не проверено: валидатор недоступен."
+                        + (output !== "" ? " " + output : "")
+                    : (output || "Изменения применены.");
+                page.statusIsError = false;
+                page.statusIsWarning = page.taskValidationWarning;
+            } else {
+                page.statusText = errorOutput || "Не удалось применить изменения.";
+                page.statusIsError = true;
+                page.statusIsWarning = false;
+            }
+            page.taskValidationWarning = false;
+            page.queueTask(["list"], "list");
         }
     }
 
@@ -168,7 +214,7 @@ Item {
     }
 
     function saveBackup() {
-        page.runTask(["backup"], "backup");
+        page.runTask(["backup", "--force"], "backup");
     }
 
     function restoreBackup() {
@@ -184,6 +230,7 @@ Item {
         page.repeatEnabled = true;
         page.statusText = "";
         page.statusIsError = false;
+        page.statusIsWarning = false;
     }
 
     function editBinding(bind) {
@@ -194,6 +241,7 @@ Item {
         page.repeatEnabled = bind.repeat !== false;
         page.statusText = "";
         page.statusIsError = false;
+        page.statusIsWarning = false;
     }
 
     function clearEditor() {
@@ -217,19 +265,24 @@ Item {
         if (combo === "" || action === "") {
             page.statusText = "Укажите сочетание и действие.";
             page.statusIsError = true;
+            page.statusIsWarning = false;
             return;
         }
         if (/[\r\n]/.test(combo) || /[\r\n]/.test(action)) {
             page.statusText = "Переводы строк в сочетании и действии не поддерживаются.";
             page.statusIsError = true;
+            page.statusIsWarning = false;
             return;
         }
         page.comboText = combo;
         page.actionText = action;
-        page.renameFrom = page.editingKeys;
         page.renameTarget = combo;
-        const args = ["set", combo, action, page.repeatEnabled ? "--repeat=true" : "--repeat=false"];
-        page.runTask(args, page.editingKeys !== "" && page.editingKeys !== combo ? "rename-set" : "write");
+        const repeatArg = page.repeatEnabled ? "--repeat=true" : "--repeat=false";
+        const renaming = page.editingKeys !== "" && page.editingKeys !== combo;
+        const args = renaming
+            ? ["rename", page.editingKeys, combo, action, repeatArg]
+            : ["set", combo, action, repeatArg];
+        page.runTask(args, renaming ? "rename" : "write");
     }
 
     function removeBinding(bind) {
@@ -330,6 +383,7 @@ Item {
         page.captureOpen = true;
         page.statusText = "Запись сочетания: нажмите клавиши или Esc для отмены (8 секунд).";
         page.statusIsError = false;
+        page.statusIsWarning = false;
         if (page.win) page.win.settingsKeysCapture = true;
         captureTimeout.restart();
         captureFocusTimer.restart();
@@ -350,12 +404,20 @@ Item {
         page.comboText = combo;
         page.statusText = "Сочетание захвачено: " + combo;
         page.statusIsError = false;
+        page.statusIsWarning = false;
         page.stopCapture(true);
     }
 
     function capturePressed(event) {
         event.accepted = true;
         if (!page.captureOpen || event.isAutoRepeat) return;
+        if (event.key === Qt.Key_Escape) {
+            page.statusText = "Запись сочетания отменена.";
+            page.statusIsError = false;
+            page.statusIsWarning = false;
+            page.stopCapture(true);
+            return;
+        }
         const modifier = page.modifierForKey(event.key);
         if (modifier !== "") {
             if (page.captureModifiers.indexOf(modifier) < 0)
@@ -363,17 +425,11 @@ Item {
             page.captureCombo = page.orderedModifiers(page.captureModifiers).join("+");
             return;
         }
-        if (event.key === Qt.Key_Escape && page.captureModifiers.length === 0
-                && event.modifiers === Qt.NoModifier) {
-            page.statusText = "Запись сочетания отменена.";
-            page.statusIsError = false;
-            page.stopCapture(false);
-            return;
-        }
         const key = page.keyName(event);
         if (key === "") {
             page.statusText = "Эту клавишу не удалось распознать — введите сочетание вручную.";
             page.statusIsError = false;
+            page.statusIsWarning = false;
             return;
         }
         page.captureKey = key;
@@ -402,6 +458,14 @@ Item {
         else page.stopCapture(false);
     }
     Component.onCompleted: if (page.visible) page.enterPage()
+    Component.onDestruction: page.stopCapture(false)
+
+    Connections {
+        target: page.win
+        function onVisibleChanged() {
+            if (page.win && !page.win.visible) page.stopCapture(false);
+        }
+    }
 
     ColumnLayout {
         id: content
@@ -523,7 +587,8 @@ Item {
                     visible: page.statusText !== ""
                     Layout.fillWidth: true
                     role: "bodySmall"
-                    color: page.statusIsError ? Theme.error : Theme.primary
+                    color: page.statusIsError ? Theme.error
+                        : (page.statusIsWarning ? Theme.warning : Theme.primary)
                     wrapMode: Text.WordWrap
                     text: page.statusText
                 }
@@ -718,12 +783,19 @@ Item {
     }
 
     Timer {
+        id: taskRestartTimer
+        interval: 0
+        onTriggered: page.startQueuedTask()
+    }
+
+    Timer {
         id: captureTimeout
         interval: 8000
         onTriggered: {
-            page.stopCapture(false);
+            page.stopCapture(true);
             page.statusText = "Время записи истекло. Введите сочетание вручную или начните захват ещё раз.";
             page.statusIsError = false;
+            page.statusIsWarning = false;
         }
     }
 
@@ -747,6 +819,10 @@ Item {
         stderr: SplitParser {
             onRead: (line) => taskProc.stderrText += line + "\n"
         }
-        onExited: (exitCode) => page.finishTask(exitCode)
+        onExited: (exitCode) => {
+            page.finishTask(exitCode);
+            if (page.queuedTaskKind !== "") taskRestartTimer.start();
+        }
+        onRunningChanged: if (!running && page.queuedTaskKind !== "") taskRestartTimer.start()
     }
 }

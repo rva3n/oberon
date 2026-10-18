@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read and safely edit Umbriel's keybinds.toml without dropping comments."""
 
+import fcntl
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 try:
@@ -18,8 +20,12 @@ except ImportError:  # pragma: no cover - Python < 3.11
     raise SystemExit(1)
 
 
-KEYBINDS = Path.home() / ".config" / "umbriel" / "src" / "keybinds.toml"
+KEYBINDS = Path(
+    os.environ.get("OBERON_KEYBINDS_FILE")
+    or (Path.home() / ".config" / "umbriel" / "src" / "keybinds.toml")
+).expanduser()
 BACKUP = KEYBINDS.with_name(KEYBINDS.name + ".bak")
+LOCK = KEYBINDS.with_name(KEYBINDS.name + ".lock")
 ENTRY_RE = re.compile(r'^\s*("(?:\\.|[^"\\])*")\s*=\s*')
 HEADER_RE = re.compile(r"^\s*\[([^\]]+)\]\s*(?:#.*)?$")
 
@@ -53,6 +59,55 @@ def split_comment(value):
         elif char == "#":
             return value[:index], value[index:]
     return value, ""
+
+
+def value_has_unclosed_construct(value):
+    """Return whether an array/table or multiline string continues below this line."""
+    value = value.lstrip()
+    if not value.startswith(("[", "{", '"""', "'''")):
+        return False
+
+    stack = []
+    quote = None
+    quote_length = 0
+    escaped = False
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if quote is not None:
+            if quote == '"' and escaped:
+                escaped = False
+                index += 1
+                continue
+            if quote == '"' and char == "\\":
+                escaped = True
+                index += 1
+                continue
+            if value.startswith(quote * quote_length, index):
+                index += quote_length
+                quote = None
+                quote_length = 0
+                continue
+            index += 1
+            continue
+
+        if char in ('"', "'"):
+            quote = char
+            quote_length = 3 if value.startswith(char * 3, index) else 1
+            index += quote_length
+            continue
+        if char == "#":
+            break
+        if char in "[{":
+            stack.append("]" if char == "[" else "}")
+        elif char in "]}":
+            if stack and stack[-1] == char:
+                stack.pop()
+            if not stack:
+                return False
+        index += 1
+
+    return bool(stack) or (quote is not None and quote_length == 3)
 
 
 def parse_document(text):
@@ -97,6 +152,8 @@ def entry_at(line):
     value = value_raw.strip()
     if not value:
         return None
+    if value_has_unclosed_construct(value):
+        raise KeybindError("формат не поддерживается, правьте вручную")
     return {
         "key": key,
         "value": value,
@@ -104,6 +161,8 @@ def entry_at(line):
         "body": body,
         "ending": ending,
         "prefix": body[:match.end()],
+        "key_prefix": body[:match.start(1)],
+        "key_suffix": body[match.end(1):match.end()],
         "value_raw": value_raw,
     }
 
@@ -131,6 +190,35 @@ def read_file():
     except UnicodeDecodeError as exc:
         raise KeybindError("keybinds.toml должен быть в кодировке UTF-8.") from exc
     return raw, text
+
+
+@contextmanager
+def keybind_lock():
+    fd = None
+    try:
+        fd = os.open(LOCK, os.O_CREAT | os.O_RDWR, 0o600)
+        lock_file = os.fdopen(fd, "a+b")
+        fd = None
+    except OSError as exc:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        raise KeybindError(f"Не удалось заблокировать {KEYBINDS}: {exc.strerror or exc}") from exc
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    except OSError as exc:
+        lock_file.close()
+        raise KeybindError(f"Не удалось заблокировать {KEYBINDS}: {exc.strerror or exc}") from exc
+    try:
+        yield
+    finally:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        lock_file.close()
 
 
 def list_bindings():
@@ -297,15 +385,16 @@ def write_text(text):
     atomic_write(text.encode("utf-8"))
 
 
-def create_backup(overwrite=True):
+def create_backup(overwrite=False):
     if not KEYBINDS.is_file():
         raise KeybindError(f"Файл биндов не найден: {KEYBINDS}")
     if BACKUP.exists() and not overwrite:
-        return
+        return False
     try:
         shutil.copy2(KEYBINDS, BACKUP)
     except OSError as exc:
         raise KeybindError(f"Не удалось создать резервную копию: {exc.strerror or exc}") from exc
+    return True
 
 
 def restore_backup():
@@ -319,14 +408,13 @@ def restore_backup():
 
 def run_umbriel(args):
     try:
-        return subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        code = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL, check=False, timeout=20).returncode
-    except FileNotFoundError:
-        return 127
     except subprocess.TimeoutExpired:
-        return 124
+        return 2
     except OSError:
-        return 1
+        return 2
+    return code if code in (0, 1, 2) else 2
 
 
 def reload_config():
@@ -338,18 +426,30 @@ def reload_config():
     return 0
 
 
-def validate_config(rollback=True):
+def validate_config(rollback=True, original=None):
     code = run_umbriel(["umbriel", "config", "validate"])
     if code == 0:
         return 0
+    if code == 2:
+        print("изменения записаны, но проверить не удалось (umbriel недоступен)", file=sys.stderr)
+        return 2
     print(f"Проверка конфигурации не пройдена (код {code}).", file=sys.stderr)
     if rollback:
         try:
-            restore_backup()
+            if original is None:
+                restore_backup()
+            else:
+                atomic_write(original)
         except KeybindError as exc:
             print(f"Откат не выполнен: {exc}", file=sys.stderr)
             return code
-        print("Файл восстановлен из keybinds.toml.bak.", file=sys.stderr)
+        except OSError as exc:
+            print(f"Откат не выполнен: {exc.strerror or exc}", file=sys.stderr)
+            return code
+        if original is None:
+            print("Файл восстановлен из keybinds.toml.bak.", file=sys.stderr)
+        else:
+            print("Исходный файл восстановлен.", file=sys.stderr)
         reload_code = run_umbriel(["umbriel", "msg", "config-reload"])
         if reload_code != 0:
             print(f"Не удалось перезагрузить восстановленную конфигурацию (код {reload_code}).", file=sys.stderr)
@@ -360,13 +460,17 @@ def find_binding(lines, combo):
     return [(index, entry) for index, entry in binding_lines(lines) if entry["key"] == combo]
 
 
-def set_binding(combo, action, repeat):
+def validate_binding_args(combo, action):
     if not combo or "\n" in combo or "\r" in combo:
         raise KeybindError("Сочетание клавиш не должно быть пустым или содержать перевод строки.")
     if not action or "\n" in action or "\r" in action:
         raise KeybindError("Действие не должно быть пустым или содержать перевод строки.")
 
-    _, text = read_file()
+
+def set_binding(combo, action, repeat):
+    validate_binding_args(combo, action)
+
+    original, text = read_file()
     document, table = parse_document(text)
     lines = text.splitlines(keepends=True)
     matches = find_binding(lines, combo)
@@ -418,17 +522,55 @@ def set_binding(combo, action, repeat):
         message = "Бинд добавлен"
 
     write_text("".join(lines))
-    code = validate_config(rollback=True)
+    code = validate_config(rollback=True, original=original)
     if code != 0:
         return code
     print(f"{message}: {combo}. Конфигурация проверена; для применения выполните apply.")
     return 0
 
 
+def rename_binding(old_combo, new_combo, action, repeat):
+    validate_binding_args(old_combo, action)
+    if not new_combo or "\n" in new_combo or "\r" in new_combo:
+        raise KeybindError("Новое сочетание клавиш не должно быть пустым или содержать перевод строки.")
+    if old_combo == new_combo:
+        raise KeybindError("Старое и новое сочетания клавиш должны отличаться.")
+
+    original, text = read_file()
+    _, table = parse_document(text)
+    lines = text.splitlines(keepends=True)
+    matches = find_binding(lines, old_combo)
+    if not matches or old_combo not in table:
+        raise KeybindError(f"Бинд не найден: {old_combo}")
+    if new_combo in table:
+        raise KeybindError(f"Бинд уже существует: {new_combo}")
+
+    index, entry = matches[0]
+    value = render_value(table[old_combo], entry["value"], action, repeat)
+    raw_value = entry["value_raw"]
+    leading = raw_value[:len(raw_value) - len(raw_value.lstrip())]
+    trailing = raw_value[len(raw_value.rstrip()):]
+    lines[index] = (
+        entry["key_prefix"] + toml_string(new_combo) + entry["key_suffix"]
+        + leading + value + trailing + entry["comment"] + entry["ending"]
+    )
+
+    create_backup(overwrite=False)
+    write_text("".join(lines))
+    code = validate_config(rollback=True, original=original)
+    if code != 0:
+        return code
+    code = reload_config()
+    if code != 0:
+        return code
+    print(f"Бинд переименован: {old_combo} → {new_combo}. Конфигурация проверена и применена.")
+    return 0
+
+
 def remove_binding(combo):
     if not combo or "\n" in combo or "\r" in combo:
         raise KeybindError("Укажите сочетание клавиш без переводов строки.")
-    _, text = read_file()
+    original, text = read_file()
     _, table = parse_document(text)
     lines = text.splitlines(keepends=True)
     matches = find_binding(lines, combo)
@@ -445,7 +587,7 @@ def remove_binding(combo):
     if backup_text is not None and updated in (backup_text + "\n", backup_text + "\r\n"):
         updated = backup_text
     write_text(updated)
-    code = validate_config(rollback=True)
+    code = validate_config(rollback=True, original=original)
     if code != 0:
         return code
     print(f"Бинд удалён: {combo}. Конфигурация проверена; для применения выполните apply.")
@@ -458,6 +600,8 @@ def restore_command():
     current, _ = read_file()
     restore_backup()
     code = validate_config(rollback=False)
+    if code == 2:
+        return code
     if code != 0:
         atomic_write(current)
         print("Резервная копия не прошла проверку; исходный файл восстановлен.", file=sys.stderr)
@@ -470,7 +614,7 @@ def restore_command():
 
 
 def usage():
-    print("Использование: keybinds.py list|backup|restore|validate|apply|set <combo> <action> [--repeat=false|--repeat=true]|remove <combo>", file=sys.stderr)
+    print("Использование: keybinds.py list|backup [--force]|restore|validate|apply|set <combo> <action> [--repeat=false|--repeat=true]|rename <old> <new> <action> [--repeat=false|--repeat=true]|remove <combo>", file=sys.stderr)
     return 2
 
 
@@ -482,22 +626,29 @@ def main(argv):
         if command == "list" and len(argv) == 1:
             list_bindings()
             return 0
-        if command == "backup" and len(argv) == 1:
-            create_backup(overwrite=True)
-            print("Резервная копия keybinds.toml.bak создана.")
+        if command == "backup" and len(argv) in (1, 2) and (len(argv) == 1 or argv[1] == "--force"):
+            with keybind_lock():
+                created = create_backup(overwrite=len(argv) == 2)
+            if created:
+                print("Резервная копия keybinds.toml.bak создана.")
+            else:
+                print("Резервная копия keybinds.toml.bak уже существует; оставлена без изменений.")
             return 0
         if command == "restore" and len(argv) == 1:
-            return restore_command()
+            with keybind_lock():
+                return restore_command()
         if command == "validate" and len(argv) == 1:
-            code = validate_config(rollback=True)
+            with keybind_lock():
+                code = validate_config(rollback=True)
             if code == 0:
                 print("Конфигурация Umbriel корректна.")
             return code
         if command == "apply" and len(argv) == 1:
-            code = validate_config(rollback=True)
-            if code != 0:
-                return code
-            return reload_config()
+            with keybind_lock():
+                code = validate_config(rollback=True)
+                if code != 0:
+                    return code
+                return reload_config()
         if command == "set" and len(argv) in (3, 4):
             repeat = None
             if len(argv) == 4:
@@ -507,9 +658,22 @@ def main(argv):
                     repeat = True
                 else:
                     return usage()
-            return set_binding(argv[1], argv[2], repeat)
+            with keybind_lock():
+                return set_binding(argv[1], argv[2], repeat)
+        if command == "rename" and len(argv) in (4, 5):
+            repeat = None
+            if len(argv) == 5:
+                if argv[4] == "--repeat=false":
+                    repeat = False
+                elif argv[4] == "--repeat=true":
+                    repeat = True
+                else:
+                    return usage()
+            with keybind_lock():
+                return rename_binding(argv[1], argv[2], argv[3], repeat)
         if command == "remove" and len(argv) == 2:
-            return remove_binding(argv[1])
+            with keybind_lock():
+                return remove_binding(argv[1])
         return usage()
     except KeybindError as exc:
         print(str(exc), file=sys.stderr)

@@ -633,8 +633,6 @@ Singleton {
         onTriggered: {
             if (!s.active || proc.running)
                 return;
-            if (s.uptime > 0)
-                s.uptime += Math.round(interval / 1000);
             s._tempsBuf = [];
             s._coreLoadsBuf = [];
             s._hadStatCpu = false;

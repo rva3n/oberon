@@ -22,11 +22,15 @@
 
 Только стандартная библиотека (tomllib есть в Python >= 3.11).
 """
+import fcntl
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 
 try:
     import tomllib
@@ -490,6 +494,70 @@ def resolve_path(file_arg):
     return os.path.join(CONFIG_DIR, file_arg)
 
 
+@contextmanager
+def exclusive_file_lock(path):
+    lock_path = os.path.abspath(path) + ".lock"
+    lock_file = None
+    fd = None
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        lock_file = os.fdopen(fd, "a+b")
+        fd = None
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        if lock_file is not None:
+            lock_file.close()
+        elif fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        raise
+    try:
+        yield
+    finally:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        lock_file.close()
+
+
+def atomic_write(path, text):
+    path = os.path.abspath(path)
+    directory = os.path.dirname(path)
+    fd = None
+    temp_path = None
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        fd, temp_path = tempfile.mkstemp(
+            prefix=".%s." % os.path.basename(path), suffix=".tmp", dir=directory
+        )
+        os.fchmod(fd, mode)
+        target = os.fdopen(fd, "w", encoding="utf-8", newline="")
+        fd = None
+        with target:
+            target.write(text)
+            target.flush()
+            os.fsync(target.fileno())
+        os.replace(temp_path, path)
+        temp_path = None
+
+        directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if fd is not None:
+            os.close(fd)
+        if temp_path is not None:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
 def cmd_set(argv):
     if len(argv) != 4:
         print("usage: umbriel-settings.py set <file> <section> <key> <tomlValue>",
@@ -528,18 +596,22 @@ def cmd_set(argv):
                     edit_path = path
 
     try:
-        with open(edit_path, "r", encoding="utf-8") as f:
-            text = f.read()
-    except OSError as exc:
-        print("не удалось прочитать %s: %s" % (edit_path, exc), file=sys.stderr)
-        return 1
+        with exclusive_file_lock(edit_path):
+            try:
+                with open(edit_path, "r", encoding="utf-8") as f:
+                    text = f.read()
+            except OSError as exc:
+                print("не удалось прочитать %s: %s" % (edit_path, exc), file=sys.stderr)
+                return 1
 
-    new_text = apply_edit(text, section, key, value)
-    try:
-        with open(edit_path, "w", encoding="utf-8") as f:
-            f.write(new_text)
+            new_text = apply_edit(text, section, key, value)
+            try:
+                atomic_write(edit_path, new_text)
+            except OSError as exc:
+                print("не удалось записать %s: %s" % (edit_path, exc), file=sys.stderr)
+                return 1
     except OSError as exc:
-        print("не удалось записать %s: %s" % (edit_path, exc), file=sys.stderr)
+        print("не удалось заблокировать %s: %s" % (edit_path, exc), file=sys.stderr)
         return 1
 
     # Перечитать конфиг композитором; ошибки не фатальны.

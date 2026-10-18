@@ -33,10 +33,18 @@ RowLayout {
     readonly property string outputName: page.win && page.win.screen ? String(page.win.screen.name) : ""
     // текущие значения настроек Umbriel, прочитанные из umbriel-settings.py
     property var umb: ({})
+    property string umbError: ""
+    property bool umbReadPending: false
+    property bool umbReadStarted: false
     // Список выходов и режимов берём из машинного интерфейса Umbriel.
     property var outputs: []
     property string outputsBuffer: ""
     property string outputsError: ""
+    property bool outputsReadPending: false
+    property bool outputsReadStarted: false
+    property string machineError: ""
+    property bool machineReadPending: false
+    property bool machineReadStarted: false
     readonly property var rootDisk: {
         const disks = SysStats.disks || [];
         for (let i = 0; i < disks.length; i++)
@@ -86,6 +94,17 @@ RowLayout {
             if (sectionId === "display")
                 page.reloadOutputs();
         }
+    }
+
+    Connections {
+        target: page.win
+        function onVisibleChanged() { page.syncSystemSection(); }
+    }
+
+    Component.onDestruction: {
+        SysStats.settingsActive = false;
+        machineRefreshTimer.stop();
+        page.machineReadPending = false;
     }
 
     readonly property var sections: [
@@ -164,7 +183,7 @@ RowLayout {
     ]
 
     function sectionIdFor(value) {
-        const legacy = ["look", "bar", "power", "notif", "weather", "compositor", "input", "display", "look", "night"];
+        const legacy = ["look", "bar", "power", "notif", "weather", "compositor", "input", "display", "keys", "night"];
         const id = String(value === undefined || value === null || value === "" ? "look" : value);
         if (/^\d+$/.test(id))
             return legacy[Number(id)] || "look";
@@ -235,20 +254,28 @@ RowLayout {
     }
 
     function syncSystemSection() {
-        const active = page.visible && page.sectionId === "system";
+        const active = page.visible && page.win && page.win.visible && page.sectionId === "system";
         SysStats.settingsActive = active;
         if (active) {
             page.refreshMachineInfo();
             machineRefreshTimer.start();
         } else {
             machineRefreshTimer.stop();
+            page.machineReadPending = false;
         }
     }
 
     function refreshMachineInfo() {
-        if (!page.visible || page.sectionId !== "system" || machineProc.running)
+        if (!page.visible || !page.win || !page.win.visible || page.sectionId !== "system")
             return;
+        if (machineProc.running) {
+            page.machineReadPending = true;
+            return;
+        }
+        page.machineReadPending = false;
+        page.machineReadStarted = false;
         machineProc.running = true;
+        machineWatchdog.restart();
     }
 
     function parseMachineLine(line) {
@@ -366,6 +393,21 @@ RowLayout {
                 try { page.umb = JSON.parse(line); } catch (e) {}
             }
         }
+        onStarted: {
+            page.umbReadStarted = true;
+            page.umbError = "";
+        }
+        onExited: (exitCode) => {
+            umbReadWatchdog.stop();
+            const started = page.umbReadStarted;
+            page.umbReadStarted = false;
+            if (started && exitCode !== 0)
+                page.umbError = "Не удалось прочитать настройки Umbriel.";
+            if (page.umbReadPending) {
+                page.umbReadPending = false;
+                umbReadRestartTimer.start();
+            }
+        }
     }
 
     // Выходы читаются отдельно, чтобы использовать полный outputs --json.
@@ -377,18 +419,28 @@ RowLayout {
         stdout: SplitParser {
             onRead: (line) => page.outputsBuffer += line + "\n"
         }
+        onStarted: {
+            page.outputsReadStarted = true;
+            page.outputsError = "";
+        }
         onExited: (exitCode) => {
-            if (exitCode !== 0) {
+            outputsReadWatchdog.stop();
+            const started = page.outputsReadStarted;
+            page.outputsReadStarted = false;
+            if (started && exitCode !== 0) {
                 page.outputsError = "Не удалось прочитать список выходов Umbriel.";
-                return;
+            } else if (started) {
+                try {
+                    const list = JSON.parse(page.outputsBuffer);
+                    if (!Array.isArray(list)) throw new Error("invalid output list");
+                    page.outputs = list;
+                } catch (e) {
+                    page.outputsError = "Umbriel вернул некорректный список выходов.";
+                }
             }
-            try {
-                const list = JSON.parse(page.outputsBuffer);
-                if (!Array.isArray(list)) throw new Error("invalid output list");
-                page.outputs = list;
-                page.outputsError = "";
-            } catch (e) {
-                page.outputsError = "Umbriel вернул некорректный список выходов.";
+            if (page.outputsReadPending) {
+                page.outputsReadPending = false;
+                outputsReadRestartTimer.start();
             }
         }
     }
@@ -411,6 +463,77 @@ RowLayout {
         stdout: SplitParser {
             onRead: line => page.parseMachineLine(line)
         }
+        onStarted: {
+            page.machineReadStarted = true;
+            page.machineError = "";
+        }
+        onExited: (exitCode) => {
+            machineWatchdog.stop();
+            const started = page.machineReadStarted;
+            page.machineReadStarted = false;
+            if (started && exitCode !== 0)
+                page.machineError = "Не удалось собрать сведения о системе.";
+            if (page.machineReadPending) {
+                page.machineReadPending = false;
+                machineReadRestartTimer.start();
+            }
+        }
+    }
+
+    // Сторожевые таймеры: процесс мог не стартовать (нет бинарника/скрипта)
+    // или зависнуть — сообщаем об этом вместо вечного «Загрузка…».
+    Timer {
+        id: umbReadWatchdog
+        interval: 8000
+        onTriggered: {
+            if (umbRead.running)
+                umbRead.running = false;
+            page.umbReadStarted = false;
+            page.umbReadPending = false;
+            page.umbError = "Не удалось прочитать настройки Umbriel (нет ответа скрипта).";
+        }
+    }
+
+    Timer {
+        id: outputsReadWatchdog
+        interval: 8000
+        onTriggered: {
+            if (outputsRead.running)
+                outputsRead.running = false;
+            page.outputsReadStarted = false;
+            page.outputsReadPending = false;
+            page.outputsError = "Не удалось прочитать список выходов (нет ответа Umbriel).";
+        }
+    }
+
+    Timer {
+        id: machineWatchdog
+        interval: 8000
+        onTriggered: {
+            if (machineProc.running)
+                machineProc.running = false;
+            page.machineReadStarted = false;
+            page.machineReadPending = false;
+            page.machineError = "Системная команда не отвечает.";
+        }
+    }
+
+    Timer {
+        id: umbReadRestartTimer
+        interval: 0
+        onTriggered: page.reloadUmb()
+    }
+
+    Timer {
+        id: outputsReadRestartTimer
+        interval: 0
+        onTriggered: page.reloadOutputs()
+    }
+
+    Timer {
+        id: machineReadRestartTimer
+        interval: 0
+        onTriggered: page.refreshMachineInfo()
     }
 
     Timer {
@@ -442,15 +565,36 @@ RowLayout {
 
     // перезапустить чтение настроек Umbriel
     function reloadUmb() {
-        umbRead.running = false;
+        if (umbRead.running) {
+            page.umbReadPending = true;
+            return;
+        }
+        page.umbReadPending = false;
+        page.umbReadStarted = false;
         umbRead.running = true;
+        umbReadWatchdog.restart();
     }
 
     function reloadOutputs() {
+        if (outputsRead.running) {
+            page.outputsReadPending = true;
+            return;
+        }
+        page.outputsReadPending = false;
         page.outputsBuffer = "";
-        page.outputsError = "";
-        outputsRead.running = false;
+        page.outputsReadStarted = false;
         outputsRead.running = true;
+        outputsReadWatchdog.restart();
+    }
+
+    function formatTomlNumber(key, value) {
+        const number = Number(value);
+        if (!isFinite(number)) return null;
+        if (key === "repeat_rate" || key === "repeat_delay")
+            return String(Math.round(number));
+        if (key === "scale" || key === "sensitivity")
+            return number.toFixed(2);
+        return null;
     }
 
     // значение из прочитанных настроек Umbriel или запасное
@@ -465,8 +609,9 @@ RowLayout {
 
     // записать значение в конфиг Umbriel (file, section, key, tomlValue) и обновить
     function setUmb(file, section, key, tomlValue) {
+        const formatted = page.formatTomlNumber(key, tomlValue);
         Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/oberon/scripts/umbriel-settings.py",
-                                 "set", file, section, key, String(tomlValue)]);
+                                 "set", file, section, key, formatted === null ? String(tomlValue) : formatted]);
         umbReloadTimer.restart();
     }
 
@@ -562,7 +707,9 @@ RowLayout {
 
     function setOutputValue(output, key, value, currentValue) {
         if (String(currentValue) === String(value)) return;
-        const tomlValue = typeof value === "string" ? JSON.stringify(value) : String(value);
+        const formatted = page.formatTomlNumber(key, value);
+        const tomlValue = formatted !== null ? formatted
+            : (typeof value === "string" ? JSON.stringify(value) : String(value));
         page.setUmb("src/appearance.toml", "output:" + output.name, key, tomlValue);
     }
 
@@ -624,7 +771,9 @@ RowLayout {
         const path = section + "." + key;
         const current = page.umbVal(path, undefined);
         if (current !== undefined && String(current) === String(value)) return;
-        const tomlValue = typeof value === "string" ? JSON.stringify(value) : String(value);
+        const formatted = page.formatTomlNumber(key, value);
+        const tomlValue = formatted !== null ? formatted
+            : (typeof value === "string" ? JSON.stringify(value) : String(value));
         page.setUmb("src/input.toml", section, key, tomlValue);
     }
 
@@ -634,7 +783,7 @@ RowLayout {
 
     function resetInputDefaults() {
         const defaults = [
-            { key: "input.mouse.sensitivity", section: "input.mouse", name: "sensitivity", value: 0, toml: "0.0" },
+            { key: "input.mouse.sensitivity", section: "input.mouse", name: "sensitivity", value: 0, toml: "0.00" },
             { key: "input.mouse.accel_profile", section: "input.mouse", name: "accel_profile", value: "adaptive", toml: "\"adaptive\"" },
             { key: "input.mouse.natural_scroll", section: "input.mouse", name: "natural_scroll", value: false, toml: "false" },
             { key: "input.mouse.left_handed", section: "input.mouse", name: "left_handed", value: false, toml: "false" }
@@ -1144,6 +1293,15 @@ RowLayout {
             glyph: page.section.glyph
             title: page.section.title
             sub: page.section.sub
+        }
+
+        LText {
+            Layout.fillWidth: true
+            visible: page.umbError !== "" && ["compositor", "display", "input"].indexOf(page.sectionId) >= 0
+            text: page.umbError
+            role: "bodySmall"
+            color: Theme.error
+            wrapMode: Text.WordWrap
         }
 
         // 0. Шелл (интерфейс)
@@ -2866,6 +3024,15 @@ RowLayout {
             SCard {
                 Layout.fillWidth: true
                 title: "Машина"
+
+                LText {
+                    Layout.fillWidth: true
+                    visible: page.machineError !== ""
+                    text: page.machineError
+                    role: "bodySmall"
+                    color: Theme.error
+                    wrapMode: Text.WordWrap
+                }
 
                 SystemInfoRow {
                     label: "ОС"
