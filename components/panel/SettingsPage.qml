@@ -115,6 +115,10 @@ RowLayout {
           sub: "Встроенный PTY-терминал в островке, шрифт и команды",
           keywords: "терминал консоль pty shell fish zsh bash шрифт курсор",
           keys: "терминал консоль pty shell fish zsh bash шрифт курсор terminal" },
+        { id: "ai", title: "ИИ-Ассистент", icon: "auto_awesome", glyph: "auto_awesome", group: "Оболочка", page: "ai",
+          sub: "OpenCode, Gemini, OpenRouter, Ollama и системный промпт",
+          keywords: "ai ии ассистент чат opencode gemini openrouter ollama ключ api модель",
+          keys: "ai ии ассистент чат opencode gemini openrouter ollama ключ api модель" },
         { id: "media", title: "Медиа", glyph: "music_note", page: "media",
           sub: "Вид медиапилюли и оформление текущего трека.",
           keys: "media player music cover disc звук плеер музыка обложка пластинка" },
@@ -175,7 +179,7 @@ RowLayout {
     ]
 
     readonly property var groups: [
-        { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "terminal", "media", "clock"] },
+        { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "terminal", "ai", "media", "clock"] },
         { id: "appearance", title: "Оформление", glyph: "colors", pages: ["look", "weather", "motion", "night"] },
         { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "keys", "games"] },
         { id: "devices", title: "Устройства", glyph: "desktop_windows", pages: ["display", "input"] },
@@ -2393,6 +2397,12 @@ RowLayout {
                     checked: page.umbVal("appearance.blur.enabled", true)
                     onToggled: (v) => page.setUmb("src/appearance.toml", "appearance.blur", "enabled", v ? "true" : "false")
                 }
+                SToggle {
+                    label: "Аудио-реактивные шейдеры (effect-audio)"
+                    sub: "Передавать уровень звука из Cava в GLSL-шейдеры рамок и экрана Umbriel"
+                    checked: Prefs.umbrielAudioReactive
+                    onToggled: (v) => Prefs.set("umbrielAudioReactive", v)
+                }
                 ChoiceRow {
                     label: "Граница"
                     values: ["", "pulse", "audio"]
@@ -2945,6 +2955,63 @@ RowLayout {
                     icon: "terminal"
                     variant: "tonal"
                     onClicked: if (page.win && page.win.shell) page.win.shell.openTerminal("")
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "ai"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Параметры ИИ"
+
+                SPick {
+                    label: "Провайдер по умолчанию"
+                    options: [
+                        { key: "opencode", label: "OpenCode" },
+                        { key: "gemini", label: "Google Gemini" },
+                        { key: "openrouter", label: "OpenRouter" },
+                        { key: "openai", label: "OpenAI" },
+                        { key: "ollama", label: "Ollama (Локально)" }
+                    ]
+                    value: Prefs.aiProvider
+                    onPicked: (v) => Prefs.set("aiProvider", String(v))
+                }
+                SSlider {
+                    label: "Температура (креативность)"
+                    from: 0
+                    to: 150
+                    step: 10
+                    suffix: "%"
+                    value: Math.round(Prefs.aiTemperature * 100)
+                    onCommitted: (v) => Prefs.set("aiTemperature", Math.round(v) / 100)
+                }
+                SToggle {
+                    label: "Передавать контекст системы"
+                    sub: "Добавлять сведения об Arch Linux и Umbriel к запросам"
+                    checked: Prefs.aiIncludeSysinfo
+                    onToggled: (v) => Prefs.set("aiIncludeSysinfo", v)
+                }
+                SToggle {
+                    label: "Чип ИИ в островке"
+                    sub: "Показывать кнопку быстрого вызова ИИ-ассистента в капсуле"
+                    checked: Prefs.islandAi
+                    onToggled: (v) => Prefs.set("islandAi", v)
+                }
+            }
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Быстрый запуск"
+
+                SButton {
+                    text: "Открыть ИИ-Ассистент и настроить ключи API"
+                    icon: "auto_awesome"
+                    variant: "tonal"
+                    onClicked: if (page.win && page.win.shell) page.win.shell.openAi()
                 }
             }
         }

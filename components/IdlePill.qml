@@ -95,7 +95,7 @@ Item {
     // ── порядок чипов: islandOrder (id: kb/weather/ws/clock/tray) ──────
     // ВАЖНО: JsonAdapter отдаёт QVariantList, а не JS-Array — Array.isArray
     // для него false, поэтому копируем по length и фильтруем по типу.
-    readonly property var defaultOrder: ["kb", "weather", "ws", "clock", "term", "tray"]
+    readonly property var defaultOrder: ["kb", "weather", "ws", "clock", "term", "ai", "tray"]
     readonly property var orderRaw: holder.orderProp
     readonly property var order: {
         const allowed = holder.defaultOrder;
@@ -418,6 +418,56 @@ Item {
         }
     }
 
+    Component { id: aiChip
+        Item {
+            id: aiOuter
+            visible: Prefs.islandAi
+            implicitWidth: Theme.dp(28)
+            implicitHeight: Theme.dp(24)
+            scale: aiArea.pressed ? 0.96 : 1
+
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Theme.durFastEffects
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.curveFastSpatial
+                }
+            }
+
+            property real grow: aiArea.containsMouse ? Theme.dp(4) : 0
+            Behavior on grow {
+                NumberAnimation {
+                    duration: Theme.durFastEffects
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.curveFastSpatial
+                }
+            }
+
+            Rectangle {
+                x: -aiOuter.grow / 2
+                y: -aiOuter.grow / 2
+                width: parent.width + aiOuter.grow
+                height: parent.height + aiOuter.grow
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: aiArea
+                    radius: parent.radius
+                    onEntered: holder.tip(aiArea, "ИИ-Ассистент — клик, чтобы открыть")
+                    onExited: holder.untip(aiArea)
+                    onClicked: if (holder.shell) holder.shell.toggleAi()
+                }
+            }
+
+            Icon {
+                anchors.centerIn: parent
+                name: "auto_awesome"
+                size: Theme.dp(15)
+                color: Theme.primary
+            }
+        }
+    }
+
     Component { id: trayChip
         // Системный трей — правый край idle-ряда (как чип). Ширину берём с
         // содержимого: на пустом трее она 0 и капсула не занимает места.
@@ -452,16 +502,19 @@ Item {
                        : chipLoader.modelData === "ws" ? Prefs.islandWorkspaces
                        : chipLoader.modelData === "clock" ? Prefs.islandClock
                        : chipLoader.modelData === "term" ? Prefs.islandTerminal
+                       : chipLoader.modelData === "ai" ? Prefs.islandAi
                        : chipLoader.modelData === "system" ? Prefs.systemLoadOnIsland
                        : Prefs.islandTray
                 active: (chipLoader.modelData !== "system" || Prefs.systemLoadOnIsland)
                     && (chipLoader.modelData !== "term" || Prefs.islandTerminal)
+                    && (chipLoader.modelData !== "ai" || Prefs.islandAi)
                 // id Component'ов не свойства — ссылаемся напрямую по id
                 sourceComponent: chipLoader.modelData === "kb" ? kbChip
                                 : chipLoader.modelData === "weather" ? weatherChip
                                 : chipLoader.modelData === "ws" ? wsChip
                                 : chipLoader.modelData === "clock" ? clockChip
                                 : chipLoader.modelData === "term" ? termChip
+                                : chipLoader.modelData === "ai" ? aiChip
                                 : chipLoader.modelData === "system" ? systemLoadChip
                                 : trayChip
             }
@@ -470,7 +523,7 @@ Item {
 
     // У боковой кромки те же источники данных складываются столбиком. Список
     // намеренно компактный: подписи длинных чипов остаются в тултипах.
-    readonly property var verticalOrder: ["media", "clock", "weather", "battery", "kb", "ws", "term", "system", "tray"]
+    readonly property var verticalOrder: ["media", "clock", "weather", "battery", "kb", "ws", "term", "ai", "system", "tray"]
 
     Component { id: verticalMediaChip
         Item {
@@ -771,6 +824,33 @@ Item {
         }
     }
 
+    Component { id: verticalAiChip
+        Item {
+            visible: Prefs.islandAi
+            implicitWidth: Theme.dp(26)
+            implicitHeight: Theme.dp(24)
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: verticalAiArea
+                    radius: parent.radius
+                    onEntered: holder.tip(verticalAiArea, "ИИ-Ассистент — клик, чтобы открыть")
+                    onExited: holder.untip(verticalAiArea)
+                    onClicked: if (holder.shell) holder.shell.toggleAi()
+                }
+            }
+            Icon {
+                anchors.centerIn: parent
+                name: "auto_awesome"
+                size: Theme.dp(15)
+                color: Theme.primary
+            }
+        }
+    }
+
     Component { id: verticalTrayChip
         Item {
             id: verticalTray
@@ -828,6 +908,7 @@ Item {
                     : modelData === "kb" ? holder.showLayout
                     : modelData === "ws" ? Prefs.islandWorkspaces
                     : modelData === "term" ? Prefs.islandTerminal
+                    : modelData === "ai" ? Prefs.islandAi
                     : modelData === "system" ? Prefs.systemLoadOnIsland
                     : Prefs.islandTray && holder.trayItems.length > 0)
                 active: chipShown
@@ -843,6 +924,7 @@ Item {
                     : modelData === "kb" ? verticalLayoutChip
                     : modelData === "ws" ? verticalWorkspaceChip
                     : modelData === "term" ? verticalTermChip
+                    : modelData === "ai" ? verticalAiChip
                     : verticalTrayChip
             }
         }

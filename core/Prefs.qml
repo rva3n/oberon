@@ -118,7 +118,14 @@ Singleton {
         termCursorStyle: "block",
         termKeepAlive: true,
         termShowChips: true,
-        islandTerminal: false
+        islandTerminal: false,
+        aiProvider: "opencode",
+        aiModel: "gemini-4-argon-contributor",
+        aiTemperature: 0.7,
+        aiSystemPrompt: "Ты — умный и лаконичный ассистент в десктоп-оболочке Oberon на Arch Linux (Wayland композитор Umbriel). Отвечай по делу, форматируй команды и код в блоках markdown.",
+        aiIncludeSysinfo: true,
+        islandAi: true,
+        umbrielAudioReactive: true
     })
 
     Process {
@@ -241,6 +248,13 @@ Singleton {
             property bool termKeepAlive: true
             property bool termShowChips: true
             property bool islandTerminal: false
+            property string aiProvider: "opencode"
+            property string aiModel: "gemini-4-argon-contributor"
+            property real aiTemperature: 0.7
+            property string aiSystemPrompt: "Ты — умный и лаконичный ассистент в десктоп-оболочке Oberon на Arch Linux (Wayland композитор Umbriel). Отвечай по делу, форматируй команды и код в блоках markdown."
+            property bool aiIncludeSysinfo: true
+            property bool islandAi: true
+            property bool umbrielAudioReactive: true
         }
     }
 
@@ -355,6 +369,13 @@ Singleton {
     readonly property bool termKeepAlive: a.termKeepAlive
     readonly property bool termShowChips: a.termShowChips
     readonly property bool islandTerminal: a.islandTerminal
+    readonly property string aiProvider: a.aiProvider
+    readonly property string aiModel: a.aiModel
+    readonly property real aiTemperature: a.aiTemperature
+    readonly property string aiSystemPrompt: a.aiSystemPrompt
+    readonly property bool aiIncludeSysinfo: a.aiIncludeSysinfo
+    readonly property bool islandAi: a.islandAi
+    readonly property bool umbrielAudioReactive: a.umbrielAudioReactive
 
     // Инстанцирование ленивых синглтонов: без ссылки на них QML их не создаёт,
     // и NightLight/Sounds никогда бы не отреагировали на эти префы.

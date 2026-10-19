@@ -18,6 +18,8 @@ ShellRoot {
     property string filesStartPath: ""
     property string terminalCwd: ""
     signal terminalCdRequested(string path)
+    property string pendingAiPrompt: ""
+    signal aiPromptRequested(string prompt)
     property string settingsSection: "look"
     property bool widgetsEditing: false
     property string launcherTab: "apps"    // apps | clipboard | emoji | packages (вкладки лончера)
@@ -249,6 +251,22 @@ ShellRoot {
         else
             root.openTerminal("");
     }
+    function openAi() {
+        root.view = "panel";
+        root.panelPage = "ai";
+    }
+    function toggleAi() {
+        if (root.view === "panel" && root.panelPage === "ai")
+            root.closeOverlays();
+        else
+            root.openAi();
+    }
+    function openAiWithPrompt(prompt) {
+        root.pendingAiPrompt = String(prompt || "");
+        root.view = "panel";
+        root.panelPage = "ai";
+        root.aiPromptRequested(root.pendingAiPrompt);
+    }
     function togglePanel()    { if (root.view === "panel") { root.view = "idle"; root.panelPage = ""; } else { root.openPanel(); } }
     function toggleLauncher() { if (root.view === "launcher") { root.view = "idle"; } else { root.openLauncher(root.launcherTab); } }
     function taskman()        { if (root.view === "taskman") { root.view = "idle"; } else { root.view = "taskman"; root.panelPage = ""; } }
@@ -352,7 +370,7 @@ ShellRoot {
         function page(name: string) {
             if (["wifi", "bluetooth", "volume", "brightness", "power", "wallpapers",
                  "clipboard", "weather", "system", "calendar", "timers", "emoji",
-                 "games", "updates", "settings", "record", "media", "files", "vault", "terminal"]
+                 "games", "updates", "settings", "record", "media", "files", "vault", "terminal", "ai"]
                     .indexOf(name) < 0)
                 return;
             root.view = "panel";
@@ -360,6 +378,9 @@ ShellRoot {
         }
         function terminal(): void { root.toggleTerminal(); }
         function terminalAt(path: string): void { root.openTerminal(path); }
+        function ai(): void { root.toggleAi(); }
+        function aiAsk(prompt: string): void { root.openAiWithPrompt(prompt); }
+        function screenshotTranslate(): void { root.closeOverlays(); shotLoader.active = true; shotLoader.item.open("translate"); }
         function pageRoot() { root.view = "panel"; root.panelPage = ""; }
         function pageWifi() { root.view = "panel"; root.panelPage = "wifi"; }
         function pageBluetooth() { root.view = "panel"; root.panelPage = "bluetooth"; }

@@ -3,10 +3,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Один общий cava для всех визуализаторов (островок MediaPill и карточка
-// MediaCard). cava берёт число полос только из конфига, поэтому перед сменой
-// band count конфиг переписывается в ~/.cache/oberon/cava.conf и процесс
-// перезапускается — механика из Lucid Cava.qml.
+// Один общий cava для всех визуализаторов (островок MediaPill, карточка
+// MediaCard, MediaView, VisualizerWidget) и аудиореактивного моста шейдеров
+// Umbriel (scripts/effect-audio.py). cava берёт число полос только из конфига,
+// поэтому перед сменой band count конфиг переписывается в ~/.cache/oberon/cava.conf
+// и процесс перезапускается — механика из Lucid Cava.qml.
 //
 // Парсинг: [output] в конфиге выставлен на raw-ascii (bar_delimiter = 32 —
 // пробел, frame_delimiter = 10 — строка, ascii_max_range = 100), каждая строка
@@ -14,24 +15,36 @@ import Quickshell.Io
 // децимал-парсом. Промежуточный слой сглаживания: вверх по биту — прыжком,
 // вниз — рампой 0.78/0.22 (как у полосы Lucid).
 Singleton {
-    id: root
+    id: cava
 
     readonly property string confPath: Quickshell.env("HOME") + "/.cache/oberon/cava.conf"
+    readonly property string bridgeScriptPath: Quickshell.env("HOME") + "/oberon/scripts/effect-audio.py"
     readonly property int minBands: 7
     readonly property int maxBands: 40
 
     // uid -> band count, все визуализаторы делят один процесс на самое высокое
     // разрешение, запрошенное сейчас
     property var demands: ({})
+    property int _extraRefCount: 0
+    readonly property int refCount: Object.keys(cava.demands).length + Math.max(0, cava._extraRefCount)
+    readonly property bool active: cava.refCount > 0
+    readonly property bool umbrielAudioReactive: Prefs.umbrielAudioReactive === true
+    readonly property bool shouldRun: cava.active || Prefs.umbrielAudioReactive === true
+
     readonly property int bands: {
         var best = 0;
-        for (var k in root.demands)
-            best = Math.max(best, root.demands[k]);
-        return Math.min(root.maxBands, best) || 0;
+        for (var k in cava.demands)
+            best = Math.max(best, cava.demands[k]);
+        if (best > 0)
+            return Math.min(cava.maxBands, best);
+        return (cava.active || Prefs.umbrielAudioReactive === true) ? 16 : 0;
     }
 
     // уровни 0..1 на полосу, сглаженные
     property var levels: []
+    property alias values: cava.levels
+    // сглаженный басовый/пиковый уровень 0..1 для аудиореактивных шейдеров Umbriel
+    property real audioLevel: 0
     // band count процесса, который сейчас реально работает
     property int liveBands: 0
     property double lastMotion: 0
@@ -39,29 +52,37 @@ Singleton {
     // false, когда движение уровней закончилось — визуализатор потушится
     property bool playing: false
 
+    function acquire() {
+        cava._extraRefCount = Math.max(0, cava._extraRefCount) + 1;
+    }
+
+    function release() {
+        cava._extraRefCount = Math.max(0, cava._extraRefCount - 1);
+    }
+
     function want(uid, n) {
         if (uid === "")
             return;
-        var v = Math.max(root.minBands, Math.min(root.maxBands, Math.round(n)));
-        if (root.demands[uid] === v)
+        var v = Math.max(cava.minBands, Math.min(cava.maxBands, Math.round(n)));
+        if (cava.demands[uid] === v)
             return;
         // новый объект: var-свойство не замечает правку по одному ключу
         var d = {};
-        for (var k in root.demands)
-            d[k] = root.demands[k];
+        for (var k in cava.demands)
+            d[k] = cava.demands[k];
         d[uid] = v;
-        root.demands = d;
+        cava.demands = d;
     }
 
     function drop(uid) {
-        if (uid === "" || root.demands[uid] === undefined)
+        if (uid === "" || cava.demands[uid] === undefined)
             return;
         var d = {};
-        for (var k in root.demands) {
+        for (var k in cava.demands) {
             if (k !== uid)
-                d[k] = root.demands[k];
+                d[k] = cava.demands[k];
         }
-        root.demands = d;
+        cava.demands = d;
     }
 
     function confText(n) {
@@ -74,25 +95,28 @@ Singleton {
 
     function apply() {
         retry.stop();
-        if (root.bands <= 0) {
+        if (!cava.shouldRun || cava.bands <= 0) {
             proc.running = false;
-            root.liveBands = 0;
-            root.levels = [];
-            root.playing = false;
+            cava.liveBands = 0;
+            cava.levels = [];
+            cava.audioLevel = 0;
+            cava.playing = false;
             return;
         }
-        if (proc.running && root.liveBands === root.bands)
+        if (proc.running && cava.liveBands === cava.bands)
             return;
-        root.liveBands = root.bands;
+        cava.liveBands = cava.bands;
         proc.running = false;
         // cava нужен конфиг файлом: пишем и запускаем поверх него
         proc.command = ["sh", "-c",
-            "mkdir -p \"${2%/*}\" && printf '%s' \"$1\" > \"$2\" && exec \"$HOME/oberon/build/prefix/bin/oberoncava\" -p \"$2\"",
-            "oberon-cava", root.confText(root.bands), root.confPath];
+            "mkdir -p \"${2%/*}\" && printf '%s' \"$1\" > \"$2\" && "
+            + "if [ -x \"$HOME/oberon/build/prefix/bin/oberoncava\" ]; then exec \"$HOME/oberon/build/prefix/bin/oberoncava\" -p \"$2\"; else exec cava -p \"$2\"; fi",
+            "oberon-cava", cava.confText(cava.bands), cava.confPath];
         proc.running = true;
     }
 
     onBandsChanged: restart.restart()
+    onShouldRunChanged: restart.restart()
 
     // ресайз идёт через много значений band count — ждём оседания перед
     // пересозданием процесса
@@ -100,7 +124,7 @@ Singleton {
         id: restart
 
         interval: 260
-        onTriggered: root.apply()
+        onTriggered: cava.apply()
     }
 
     // Падение cava не должно оставлять визуализаторы без данных,
@@ -110,8 +134,8 @@ Singleton {
 
         interval: 1500
         onTriggered: {
-            if (root.bands > 0 && !proc.running)
-                root.apply();
+            if (cava.shouldRun && cava.bands > 0 && !proc.running)
+                cava.apply();
         }
     }
 
@@ -120,19 +144,43 @@ Singleton {
         interval: 100
         repeat: true
         running: proc.running
-        onTriggered: root.playing = Date.now() - root.lastMotion < 500
+        onTriggered: cava.playing = Date.now() - cava.lastMotion < 500
+    }
+
+    // Мост аудио-уровня для шейдеров Umbriel (scripts/effect-audio.py)
+    Process {
+        id: umbrielAudioBridge
+
+        running: Prefs.umbrielAudioReactive === true
+        command: ["python3", cava.bridgeScriptPath]
+        stdinEnabled: true
+        onExited: {
+            if (Prefs.umbrielAudioReactive === true)
+                bridgeRetry.restart();
+        }
+    }
+
+    Timer {
+        id: bridgeRetry
+
+        interval: 1500
+        onTriggered: {
+            if (Prefs.umbrielAudioReactive === true && !umbrielAudioBridge.running)
+                umbrielAudioBridge.running = true;
+        }
     }
 
     Process {
         id: proc
 
         running: false
-        onExited: if (root.bands > 0) retry.restart()
+        onExited: if (cava.shouldRun && cava.bands > 0) retry.restart()
         onRunningChanged: {
-            root.running = proc.running;
+            cava.running = proc.running;
             if (!proc.running) {
-                root.levels = [];
-                root.playing = false;
+                cava.levels = [];
+                cava.audioLevel = 0;
+                cava.playing = false;
             }
         }
 
@@ -142,7 +190,7 @@ Singleton {
                 if (raw === "")
                     return;
                 var parts = raw.split(" ");
-                var prev = root.levels;
+                var prev = cava.levels;
                 var out = new Array(parts.length);
                 var moving = false;
                 for (var i = 0; i < parts.length; i++) {
@@ -153,10 +201,31 @@ Singleton {
                     if (s > 0.015)
                         moving = true;
                 }
-                root.levels = out;
+                cava.levels = out;
                 if (moving) {
-                    root.lastMotion = Date.now();
-                    root.playing = true;
+                    cava.lastMotion = Date.now();
+                    cava.playing = true;
+                }
+                if (Prefs.umbrielAudioReactive === true && out.length > 0) {
+                    var bassCount = Math.max(1, Math.floor(out.length * 0.35));
+                    var bassSum = 0;
+                    var peak = 0;
+                    for (var j = 0; j < out.length; j++) {
+                        var bv = out[j] || 0;
+                        if (j < bassCount)
+                            bassSum += bv;
+                        if (bv > peak)
+                            peak = bv;
+                    }
+                    var bassAvg = bassSum / bassCount;
+                    var targetLevel = Math.max(0, Math.min(1, bassAvg * 0.65 + peak * 0.35));
+                    var prevAudio = cava.audioLevel || 0;
+                    var level = targetLevel >= prevAudio
+                        ? prevAudio * 0.30 + targetLevel * 0.70
+                        : prevAudio * 0.78 + targetLevel * 0.22;
+                    cava.audioLevel = level;
+                    if (umbrielAudioBridge.running)
+                        umbrielAudioBridge.write(level.toFixed(4) + "\n");
                 }
             }
         }

@@ -107,6 +107,7 @@ PanelWindow {
         media: "xl",
         files: "xl",
         terminal: "xl",
+        ai: "xl",
         vault: "m",
         calendar: "m",
         weather: "m",
@@ -613,6 +614,7 @@ PanelWindow {
                 FilesView { win: win }
                 VaultView { win: win }
                 TerminalView { id: terminalPage; win: win }
+                AiView { id: aiPage; win: win }
 
                 TaskManager { visible: win.mode === "taskman"; shell: win.shell; initialTab: win.shell ? win.shell.taskmanTab : 0 }
 
@@ -702,7 +704,8 @@ PanelWindow {
         media: "Медиа",
         files: "Файлы",
         vault: "Пароли",
-        terminal: "Терминал"
+        terminal: "Терминал",
+        ai: "ИИ-Ассистент"
     })
     readonly property string pageTitle: pageTitles[page] || ""
 
