@@ -17,7 +17,7 @@ PanelWindow {
         || root.screen.name === Umbriel.activeOutput)
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    exclusiveZone: 0
+    exclusiveZone: -1
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "oberon-backdrop"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

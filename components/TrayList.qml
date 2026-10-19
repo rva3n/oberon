@@ -243,7 +243,7 @@ Item {
         visible: trayList.menuItem !== null
         color: "transparent"
         anchors { top: true; bottom: true; left: true; right: true }
-        exclusiveZone: 0
+        exclusiveZone: -1
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "oberon-tray-menu"
         WlrLayershell.keyboardFocus: trayList.menuItem !== null

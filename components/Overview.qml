@@ -167,7 +167,7 @@ PanelWindow {
     visible: overview.shown
     color: "transparent"
     anchors { top: true; bottom: true; left: true; right: true }
-    exclusiveZone: 0
+    exclusiveZone: -1
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-overview"
     WlrLayershell.keyboardFocus: overview.shown ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None

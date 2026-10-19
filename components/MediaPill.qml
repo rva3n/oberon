@@ -24,7 +24,7 @@ PanelWindow {
     // Umbriel сам сдвигает top-слой на зарезервированную островом полосу —
     // компенсируем её, чтобы пилюля встала на одну линию с островом (6px)
     margins { top: Theme.dp(6) - Theme.topReserve - Theme.dp(4); left: Theme.dp(7) - mp.padH }
-    exclusiveZone: 0
+    exclusiveZone: -1
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-media"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

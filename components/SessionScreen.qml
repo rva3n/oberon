@@ -109,7 +109,7 @@ PanelWindow {
     visible: ses.shown || ses.reveal > 0.01
     color: "transparent"
     anchors { top: true; bottom: true; left: true; right: true }
-    exclusiveZone: 0
+    exclusiveZone: -1
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-session"
     WlrLayershell.keyboardFocus: ses.shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None

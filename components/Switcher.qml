@@ -127,7 +127,7 @@ PanelWindow {
     visible: switcher.open || switcher.reveal > 0.01
     color: "transparent"
     anchors { top: true; bottom: true; left: true; right: true }
-    exclusiveZone: 0
+    exclusiveZone: -1
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-switcher"
     WlrLayershell.keyboardFocus: switcher.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None

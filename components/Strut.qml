@@ -25,6 +25,11 @@ PanelWindow {
         + Theme.dp(Math.max(0, Prefs.islandGap))
     // При автоскрытии полосу не держим: капсула уезжает за кромку.
     readonly property bool reserving: Prefs.islandAutoHide !== true
+    // В fullscreen зону снимаем: Umbriel ставит полноэкранное окно внутрь
+    // usable area и без этого игра уезжает вниз на величину зоны (низ обрезан).
+    // Остров в fullscreen и так скрыт, место ему не нужно.
+    readonly property bool fullscreenHere: strut.screen
+        ? Umbriel.fullscreenFor(strut.screen.name) : false
 
     visible: strut.reserving
     anchors {
@@ -36,7 +41,7 @@ PanelWindow {
     implicitWidth: strut.horizontal ? 0 : strut.reserve
     implicitHeight: strut.horizontal ? strut.reserve : 0
     color: "transparent"
-    exclusiveZone: strut.reserving ? strut.reserve : 0
+    exclusiveZone: strut.reserving && !strut.fullscreenHere ? strut.reserve : -1
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "oberon-strut"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

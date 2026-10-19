@@ -61,10 +61,12 @@ PanelWindow {
     implicitHeight: win.islandVertical
         ? Math.min(win.screen ? win.screen.height : 1080, Theme.dp(1024))
         : win.stripExtent
-    // Резерв не запрашиваем: Umbriel рисует поверхность с exclusiveZone
-    // дважды (сдвиг на толщину), а капсула и так парит над окнами —
-    // как pillOverlay=true у Panacea.
-    exclusiveZone: 0
+    // -1: позиционируемся относительно всей площади вывода и ничего не
+    // резервируем (как pillOverlay=true у Panacea). Полосу под остров держит
+    // отдельная невидимая распорка (components/Strut.qml) с положительной
+    // зоной: при zone = 0 композитор ставит поверхность внутрь usable area
+    // и капсула уезжала бы вниз на величину чужой зоны.
+    exclusiveZone: -1
     // Overlay: панель/лончер обязаны быть выше полноэкранного клик-фона
     // (components/Backdrop.qml — Top-слой), иначе клик внутри панели её закрывает.
     WlrLayershell.layer: WlrLayer.Overlay

@@ -20,7 +20,7 @@ PanelWindow {
     visible: active
     color: "transparent"
     anchors { top: true; bottom: true; left: true; right: true }
-    exclusiveZone: 0
+    exclusiveZone: -1
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-polkit"
     WlrLayershell.keyboardFocus: root.active ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
