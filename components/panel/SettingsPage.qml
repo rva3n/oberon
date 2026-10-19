@@ -854,17 +854,16 @@ RowLayout {
     }
 
     // ── порядок чипов островка (islandOrder) ─────────────────────────
-    // Список id согласован с IdlePill/Island: kb/weather/ws/clock/go/tray.
+    // Список id согласован с IdlePill/Island: kb/weather/ws/clock/tray.
     readonly property var chipTitles: ({
         "kb": "Раскладка",
         "weather": "Погода",
         "ws": "Рабочие пространства",
         "clock": "Часы",
-        "go": "OpenCode",
         "tray": "Трей"
     })
     readonly property var chipOrder: {
-        const allowed = ["kb", "weather", "ws", "clock", "go", "tray"];
+        const allowed = ["kb", "weather", "ws", "clock", "tray"];
         const raw = Prefs.islandOrder;
         const out = [];
         if (raw && typeof raw.length === "number") {
@@ -1703,11 +1702,6 @@ RowLayout {
                     onToggled: (v) => Prefs.set("islandTray", v)
                 }
                 ToggleRow {
-                    label: "Показывать чип OpenCode"
-                    checked: Prefs.islandGo
-                    onToggled: (v) => Prefs.set("islandGo", v)
-                }
-                ToggleRow {
                     label: "Островок на всех мониторах"
                     sub: "Показывать капсулу и всплывающие тосты на всех подключённых экранах"
                     checked: Prefs.islandAllScreens
@@ -1750,7 +1744,6 @@ RowLayout {
                                     : modelData === "weather" ? "public"
                                     : modelData === "ws" ? "workspaces"
                                     : modelData === "clock" ? "schedule"
-                                    : modelData === "go" ? "bolt"
                                     : "toolbar"
                                 size: Theme.dp(17)
                                 color: Theme.subtext

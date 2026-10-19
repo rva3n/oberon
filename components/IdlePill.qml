@@ -47,9 +47,6 @@ Item {
         : Weather.loading ? "loading" : "error"
     readonly property string weatherLabel: weatherStatus === "data" ? Math.round(Weather.temp) + "°"
         : weatherStatus === "loading" ? "..." : "—"
-    readonly property var goInfo: GoUsage.chipOut(Prefs.goChipMode)
-    readonly property bool goWarn: Boolean(goInfo && goInfo.warn)
-    readonly property bool goIsError: Boolean(goInfo && goInfo.tone === "error")
     readonly property string systemLoadLabel: SysStats.gpuLoadAvailable
         ? "C " + SysStats.cpuPercent + " G " + SysStats.gpuUsage
         : "C " + SysStats.cpuPercent + "%"
@@ -95,10 +92,10 @@ Item {
         return Quickshell.iconPath(raw, true);
     }
 
-    // ── порядок чипов: islandOrder (id: kb/weather/ws/clock/go/tray) ──────
+    // ── порядок чипов: islandOrder (id: kb/weather/ws/clock/tray) ──────
     // ВАЖНО: JsonAdapter отдаёт QVariantList, а не JS-Array — Array.isArray
     // для него false, поэтому копируем по length и фильтруем по типу.
-    readonly property var defaultOrder: ["kb", "weather", "ws", "clock", "go", "tray"]
+    readonly property var defaultOrder: ["kb", "weather", "ws", "clock", "tray"]
     readonly property var orderRaw: holder.orderProp
     readonly property var order: {
         const allowed = holder.defaultOrder;
@@ -371,76 +368,6 @@ Item {
         }
     }
 
-    Component { id: goChip
-        Item {
-            id: goOuter
-            visible: Prefs.islandGo
-            implicitWidth: goRow.implicitWidth + Theme.dp(18)
-            implicitHeight: Theme.dp(24)
-            scale: goArea.pressed ? 0.96 : 1
-
-            readonly property var chipInfo: holder.goInfo
-            readonly property bool warn: holder.goWarn
-            readonly property bool isErr: holder.goIsError
-
-            Behavior on scale {
-                NumberAnimation {
-                    duration: Theme.durFastEffects
-                    easing.type: Easing.Bezier
-                    easing.bezierCurve: Theme.curveFastSpatial
-                }
-            }
-
-            property real grow: goArea.containsMouse ? Theme.dp(4) : 0
-            Behavior on grow {
-                NumberAnimation {
-                    duration: Theme.durFastEffects
-                    easing.type: Easing.Bezier
-                    easing.bezierCurve: Theme.curveFastSpatial
-                }
-            }
-
-            Rectangle {
-                x: -goOuter.grow / 2
-                y: -goOuter.grow / 2
-                width: parent.width + goOuter.grow
-                height: parent.height + goOuter.grow
-                radius: Theme.radiusPill
-                color: Theme.bgTile
-                StateLayer {
-                    id: goArea
-                    radius: parent.radius
-                    onEntered: holder.tip(goArea, goOuter.chipInfo && goOuter.chipInfo.tip
-                        ? goOuter.chipInfo.tip
-                        : "OpenCode — клик, чтобы открыть лимиты")
-                    onExited: holder.untip(goArea)
-                    onClicked: if (holder.shell) holder.shell.setPage("opencode")
-                }
-            }
-
-            Row {
-                id: goRow
-                anchors.centerIn: parent
-                spacing: Theme.dp(4)
-
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "bolt"
-                    size: Theme.dp(14)
-                    color: goOuter.isErr ? Theme.error : (goOuter.warn ? Theme.warning : Theme.primary)
-                }
-
-                LText {
-                    anchors.verticalCenter: parent.verticalCenter
-                    role: "labelLarge"
-                    tabular: true
-                    color: goOuter.isErr ? Theme.error : (goOuter.warn ? Theme.warning : Theme.text)
-                    text: goOuter.chipInfo ? goOuter.chipInfo.text : "GO"
-                }
-            }
-        }
-    }
-
     Component { id: trayChip
         // Системный трей — правый край idle-ряда (как чип). Ширину берём с
         // содержимого: на пустом трее она 0 и капсула не занимает места.
@@ -474,25 +401,23 @@ Item {
                        : chipLoader.modelData === "weather" ? Prefs.islandWeather
                        : chipLoader.modelData === "ws" ? Prefs.islandWorkspaces
                        : chipLoader.modelData === "clock" ? Prefs.islandClock
-                       : chipLoader.modelData === "go" ? Prefs.islandGo
                        : chipLoader.modelData === "system" ? Prefs.systemLoadOnIsland
                        : Prefs.islandTray
                 active: chipLoader.modelData !== "system" || Prefs.systemLoadOnIsland
                 // id Component'ов не свойства — ссылаемся напрямую по id
                 sourceComponent: chipLoader.modelData === "kb" ? kbChip
-                               : chipLoader.modelData === "weather" ? weatherChip
-                               : chipLoader.modelData === "ws" ? wsChip
-                               : chipLoader.modelData === "clock" ? clockChip
-                               : chipLoader.modelData === "go" ? goChip
-                               : chipLoader.modelData === "system" ? systemLoadChip
-                               : trayChip
+                                : chipLoader.modelData === "weather" ? weatherChip
+                                : chipLoader.modelData === "ws" ? wsChip
+                                : chipLoader.modelData === "clock" ? clockChip
+                                : chipLoader.modelData === "system" ? systemLoadChip
+                                : trayChip
             }
         }
     }
 
     // У боковой кромки те же источники данных складываются столбиком. Список
     // намеренно компактный: подписи длинных чипов остаются в тултипах.
-    readonly property var verticalOrder: ["media", "clock", "weather", "go", "battery", "kb", "ws", "system", "tray"]
+    readonly property var verticalOrder: ["media", "clock", "weather", "battery", "kb", "ws", "system", "tray"]
 
     Component { id: verticalMediaChip
         Item {
@@ -633,42 +558,6 @@ Item {
                     : "Погода: " + (holder.weatherStatus === "loading" ? "загрузка…" : "нет данных"))
                 onExited: holder.untip(verticalWeatherArea)
                 onClicked: if (holder.shell && holder.weatherStatus === "data") holder.shell.setTab("weather")
-            }
-        }
-    }
-
-    Component { id: verticalGoChip
-        Item {
-            id: verticalGo
-            implicitWidth: goColumn.implicitWidth
-            implicitHeight: goColumn.implicitHeight
-            Column {
-                id: goColumn
-                anchors.centerIn: parent
-                spacing: 0
-                Icon {
-                    id: verticalGoIcon
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    name: "bolt"
-                    size: Theme.dp(15)
-                    color: holder.goIsError ? Theme.error : (holder.goWarn ? Theme.warning : Theme.primary)
-                }
-                LText {
-                    id: verticalGoLabel
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    role: "labelSmall"
-                    color: holder.goIsError ? Theme.error : (holder.goWarn ? Theme.warning : Theme.text)
-                    text: holder.goInfo ? String(holder.goInfo.text || "GO").slice(0, 4) : "GO"
-                }
-            }
-            StateLayer {
-                id: verticalGoArea
-                anchors.fill: verticalGo
-                radius: Theme.radiusSm
-                onEntered: holder.tip(verticalGoArea, holder.goInfo && holder.goInfo.tip
-                    ? holder.goInfo.tip : "OpenCode — клик, чтобы открыть лимиты")
-                onExited: holder.untip(verticalGoArea)
-                onClicked: if (holder.shell) holder.shell.setPage("opencode")
             }
         }
     }
@@ -855,12 +744,11 @@ Item {
                     && (modelData === "media" ? holder.player !== null
                     : modelData === "clock" ? Prefs.islandClock
                     : modelData === "weather" ? Prefs.islandWeather
-                     : modelData === "go" ? Prefs.islandGo
-                     : modelData === "battery" ? holder.showBattery
-                     : modelData === "kb" ? holder.showLayout
-                     : modelData === "ws" ? Prefs.islandWorkspaces
-                     : modelData === "system" ? Prefs.systemLoadOnIsland
-                     : Prefs.islandTray && holder.trayItems.length > 0)
+                    : modelData === "battery" ? holder.showBattery
+                    : modelData === "kb" ? holder.showLayout
+                    : modelData === "ws" ? Prefs.islandWorkspaces
+                    : modelData === "system" ? Prefs.systemLoadOnIsland
+                    : Prefs.islandTray && holder.trayItems.length > 0)
                 active: chipShown
                 visible: chipShown
                 Layout.alignment: Qt.AlignHCenter
@@ -869,7 +757,6 @@ Item {
                 sourceComponent: modelData === "media" ? verticalMediaChip
                     : modelData === "clock" ? verticalClockChip
                     : modelData === "weather" ? verticalWeatherChip
-                    : modelData === "go" ? verticalGoChip
                     : modelData === "battery" ? verticalBatteryChip
                     : modelData === "system" ? verticalSystemLoadChip
                     : modelData === "kb" ? verticalLayoutChip

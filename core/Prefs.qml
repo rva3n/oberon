@@ -29,7 +29,6 @@ Singleton {
         islandClock: true,
         islandWorkspaces: true,
         islandTray: true,
-        islandGo: true,
         clockSeconds: true,
         clock12: false,
         clockWeekday: true,
@@ -78,7 +77,6 @@ Singleton {
         recordMic: false,
         recordMicSource: "",
         goPlan: "go",
-        goChipMode: "auto",
         goWarnPct: 80,
         goRenewDom: 22,
         tilesOrder: "",
@@ -148,7 +146,6 @@ Singleton {
             property bool islandClock: true
             property bool islandWorkspaces: true
             property bool islandTray: true
-            property bool islandGo: true
             property bool clockSeconds: true
             property bool clock12: false
             property bool clockWeekday: true
@@ -197,7 +194,6 @@ Singleton {
             property bool recordMic: false
             property string recordMicSource: ""
             property string goPlan: "go"
-            property string goChipMode: "auto"
             property int goWarnPct: 80
             property int goRenewDom: 22
             property string tilesOrder: ""
@@ -259,7 +255,6 @@ Singleton {
     readonly property bool islandClock: a.islandClock
     readonly property bool islandWorkspaces: a.islandWorkspaces
     readonly property bool islandTray: a.islandTray
-    readonly property bool islandGo: a.islandGo
     readonly property bool clockSeconds: a.clockSeconds
     readonly property bool clock12: a.clock12
     readonly property bool clockWeekday: a.clockWeekday
@@ -308,7 +303,6 @@ Singleton {
     readonly property bool recordMic: a.recordMic
     readonly property string recordMicSource: a.recordMicSource
     readonly property string goPlan: a.goPlan
-    readonly property string goChipMode: a.goChipMode
     readonly property int goWarnPct: a.goWarnPct
     readonly property int goRenewDom: a.goRenewDom
     readonly property string tilesOrder: a.tilesOrder

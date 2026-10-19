@@ -8,8 +8,8 @@ import "../../ui"
 // «Лимиты»: расход OpenCode Go по окнам 5ч/7д/30д из core/GoUsage
 // (лимит — месячные $ на каждую модель; 5ч = 20% мес, неделя = 50%,
 // месяц = rolling 30д; Go Plus = ×2). «Настройки»: модель оркестратора
-// (opencode.json + live-API), модели субагентов (agents/*.md / inline),
-// план и чип — через scripts/opencode-ctl.py (GoUsage.runCtl).
+// (opencode.json + live-API), модели субагентов (agents/*.md / inline).
+// План задаётся локально, конфигурация моделей — через scripts/opencode-ctl.py.
 ColumnLayout {
     id: page
 
@@ -720,44 +720,14 @@ ColumnLayout {
                 }
             }
 
-            // ── чип «GO» в островке ─────────────────────────────────────
+            // ── порог предупреждения в лимитах ────────────────────────
             Card {
                 Layout.fillWidth: true
-                title: "Чип в островке"
+                title: "Порог предупреждения"
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Theme.dp(8)
-
-                    RowLayout {
-                        spacing: Theme.dp(6)
-
-                        Chip {
-                            text: "Авто"
-                            selected: Prefs.goChipMode === "auto"
-                            onClicked: Prefs.set("goChipMode", "auto")
-                        }
-
-                        Chip {
-                            text: "5ч"
-                            selected: Prefs.goChipMode === "5h"
-                            onClicked: Prefs.set("goChipMode", "5h")
-                        }
-
-                        Chip {
-                            text: "7д"
-                            selected: Prefs.goChipMode === "7d"
-                            onClicked: Prefs.set("goChipMode", "7d")
-                        }
-
-                        Chip {
-                            text: "30д"
-                            selected: Prefs.goChipMode === "30d"
-                            onClicked: Prefs.set("goChipMode", "30d")
-                        }
-
-                        Item { Layout.fillWidth: true }
-                    }
 
                     Slider {
                         Layout.fillWidth: true
@@ -775,7 +745,7 @@ ColumnLayout {
                         role: "bodySmall"
                         color: Theme.subtextDim
                         wrapMode: Text.WordWrap
-                        text: "Отображает общий расход подписки OpenCode Go («Авто» — окно с наибольшим % использования). С порога «предупреждение» чип желтеет (по нему же — жёлтая/красная шкала в лимитах)."
+                        text: "В разделе лимитов расходная шкала становится жёлтой с этого порога и красной при 85% и выше."
                     }
                 }
             }
