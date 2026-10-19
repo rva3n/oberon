@@ -11,7 +11,6 @@ singleton Weather 1.0 Weather.qml
 singleton SysStats 1.0 SysStats.qml
 singleton Chrono 1.0 Chrono.qml
 singleton ProcList 1.0 ProcList.qml
-singleton GoUsage 1.0 GoUsage.qml
 singleton Reminders 1.0 Reminders.qml
 singleton Cava 1.0 Cava.qml
 singleton Sounds 1.0 Sounds.qml

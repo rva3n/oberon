@@ -12,7 +12,6 @@ RecordView 1.0 RecordView.qml
 GamesPage 1.0 GamesPage.qml
 UpdatesPage 1.0 UpdatesPage.qml
 SettingsPage 1.0 SettingsPage.qml
-OpenCodePage 1.0 OpenCodePage.qml
 KeybindsPage 1.0 KeybindsPage.qml
 MediaView 1.0 MediaView.qml
 FilesView 1.0 FilesView.qml

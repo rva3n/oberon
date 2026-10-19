@@ -141,9 +141,6 @@ RowLayout {
         { id: "games", title: "Игры", glyph: "sports_esports", page: "games",
           sub: "Gamescope, Proton, Steam и MangoHud.",
           keys: "games gamescope proton steam mangohud игры запуск оверлей" },
-        { id: "opencode", title: "OpenCode", glyph: "bolt", page: "opencode",
-          sub: "Лимиты и настройки моделей OpenCode Go.",
-          keys: "opencode go model лимиты модели агенты" },
         { id: "display", title: "Экран", glyph: "desktop_windows", page: "display",
           sub: "Разрешение, частота и масштаб подключённого экрана.",
           keys: "display monitor resolution refresh scale transform vrr power экран монитор разрешение герцовка поворот масштаб частота питание" },
@@ -176,7 +173,7 @@ RowLayout {
     readonly property var groups: [
         { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "media", "clock"] },
         { id: "appearance", title: "Оформление", glyph: "colors", pages: ["look", "weather", "motion", "night"] },
-        { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "keys", "games", "opencode"] },
+        { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "keys", "games"] },
         { id: "devices", title: "Устройства", glyph: "desktop_windows", pages: ["display", "input"] },
         { id: "security", title: "Безопасность", glyph: "lock", pages: ["lock", "vault"] },
         { id: "system", title: "Система", glyph: "settings", pages: ["system", "power", "compositor", "updates"] }
@@ -3253,11 +3250,6 @@ RowLayout {
 
         GamesPage {
             visible: page.sectionId === "games"
-            Layout.fillWidth: true
-            win: page.win
-        }
-        OpenCodePage {
-            visible: page.sectionId === "opencode"
             Layout.fillWidth: true
             win: page.win
         }

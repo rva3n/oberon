@@ -265,15 +265,13 @@ ShellRoot {
         root.view = "panel";
         root.panelPage = p;
     }
-    // совместимость с чипами острова: weather — погода, calendar — календарь,
-    // opencode — OpenCode, system — диспетчер, остальное — корень панели
+    // Совместимость с чипами острова: weather — погода, calendar — календарь,
+    // system — диспетчер, остальное — корень панели.
     function setTab(t) {
         if (t === "weather")
             root.togglePage("weather");
         else if (t === "calendar")
             root.togglePage("calendar");
-        else if (t === "opencode")
-            root.togglePage("opencode");
         else if (t === "system")
             root.taskman();
         else
@@ -313,7 +311,15 @@ ShellRoot {
         function panel() { root.togglePanel() }
         function quicksettings() { root.togglePanel() }
         function tray() { root.toggleTray() }
-        function page(name: string) { root.view = "panel"; root.panelPage = name; }
+        function page(name: string) {
+            if (["wifi", "bluetooth", "volume", "brightness", "power", "wallpapers",
+                 "clipboard", "weather", "system", "calendar", "timers", "emoji",
+                 "games", "updates", "settings", "record", "media", "files", "vault"]
+                    .indexOf(name) < 0)
+                return;
+            root.view = "panel";
+            root.panelPage = name;
+        }
         function pageRoot() { root.view = "panel"; root.panelPage = ""; }
         function pageWifi() { root.view = "panel"; root.panelPage = "wifi"; }
         function pageBluetooth() { root.view = "panel"; root.panelPage = "bluetooth"; }

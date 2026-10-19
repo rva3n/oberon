@@ -101,7 +101,6 @@ PanelWindow {
         settings: "l",
         games: "l",
         updates: "l",
-        opencode: "l",
         media: "l",
         files: "l",
         vault: "m",
@@ -598,7 +597,6 @@ PanelWindow {
                 SettingsPage { win: win }
                 GamesPage { win: win }
                 UpdatesPage { win: win }
-                OpenCodePage { win: win }
                 FilesView { win: win }
                 VaultView { win: win }
 
@@ -682,7 +680,6 @@ PanelWindow {
         system: "Система",
         calendar: "Календарь",
         timers: "Таймеры",
-        opencode: "OpenCode",
         emoji: "Эмодзи",
         games: "Игры",
         updates: "Обновления",

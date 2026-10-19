@@ -76,9 +76,6 @@ Singleton {
         recordAudio: true,
         recordMic: false,
         recordMicSource: "",
-        goPlan: "go",
-        goWarnPct: 80,
-        goRenewDom: 22,
         tilesOrder: "",
         tilesHidden: "",
         widgetsEnabled: false,
@@ -193,9 +190,6 @@ Singleton {
             property bool recordAudio: true
             property bool recordMic: false
             property string recordMicSource: ""
-            property string goPlan: "go"
-            property int goWarnPct: 80
-            property int goRenewDom: 22
             property string tilesOrder: ""
             property string tilesHidden: ""
             property bool widgetsEnabled: false
@@ -302,9 +296,6 @@ Singleton {
     readonly property bool recordAudio: a.recordAudio
     readonly property bool recordMic: a.recordMic
     readonly property string recordMicSource: a.recordMicSource
-    readonly property string goPlan: a.goPlan
-    readonly property int goWarnPct: a.goWarnPct
-    readonly property int goRenewDom: a.goRenewDom
     readonly property string tilesOrder: a.tilesOrder
     readonly property string tilesHidden: a.tilesHidden
     readonly property bool widgetsEnabled: a.widgetsEnabled
