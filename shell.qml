@@ -202,19 +202,36 @@ ShellRoot {
     function openLauncher(tab) { root.launcherTab = tab || "apps"; root.view = "launcher"; }
     function expandLocalPath(path) {
         const value = String(path || "").trim();
-        const home = Quickshell.env("HOME");
+        const home = Quickshell.env("HOME") || "/";
         return value === "~" ? home : (value.indexOf("~/") === 0 ? home + value.slice(1) : value);
     }
+    function parentDirOf(path) {
+        const expanded = root.expandLocalPath(path).replace(/\/+$/, "");
+        if (expanded === "" || expanded === "/")
+            return "/";
+        const slash = expanded.lastIndexOf("/");
+        return slash <= 0 ? "/" : expanded.slice(0, slash);
+    }
     function openMedia(path) {
-        root.mediaPath = root.expandLocalPath(path);
+        const expanded = root.expandLocalPath(path);
+        root.mediaPath = "";
+        root.mediaPath = expanded;
         root.view = "panel";
         root.panelPage = "media";
     }
     function openFiles(path) {
         const value = String(path || "").trim();
-        root.filesStartPath = value === "" ? "" : root.expandLocalPath(value);
+        const expanded = value === "" ? "" : root.expandLocalPath(value);
+        root.filesStartPath = "";
+        root.filesStartPath = expanded;
         root.view = "panel";
         root.panelPage = "files";
+    }
+    function openFilesAtParent(path) {
+        root.openFiles(root.parentDirOf(path || root.mediaPath));
+    }
+    function backToFiles() {
+        root.openFiles(root.parentDirOf(root.mediaPath));
     }
     function openVault() { root.view = "panel"; root.panelPage = "vault"; }
     function togglePanel()    { if (root.view === "panel") { root.view = "idle"; root.panelPage = ""; } else { root.openPanel(); } }

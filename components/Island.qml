@@ -103,8 +103,8 @@ PanelWindow {
         settings: "l",
         games: "l",
         updates: "l",
-        media: "l",
-        files: "l",
+        media: "xl",
+        files: "xl",
         vault: "m",
         calendar: "m",
         weather: "m",
@@ -115,7 +115,7 @@ PanelWindow {
         s: Theme.dp(440),
         m: Theme.dp(520),
         l: Theme.dp(820),
-        xl: Theme.dp(860)
+        xl: Theme.dp(920)
     })
     readonly property int panelBaseW: {
         const rawW = win.view === "taskman" ? Theme.dp(960)
@@ -493,6 +493,15 @@ PanelWindow {
                 role: "titleMedium"
                 color: Theme.text
                 text: win.pageTitle
+            }
+            Button {
+                visible: win.mode === "panel" && win.page === "media" && win.shell !== null && String(win.shell.mediaPath || "") !== ""
+                size: "xs"
+                variant: "tonal"
+                icon: "folder_open"
+                text: "В папку"
+                disabled: win.pillDragging
+                onClicked: if (win.shell) win.shell.backToFiles()
             }
             LText { // заголовок вида «трей»
                 visible: win.mode === "tray"
