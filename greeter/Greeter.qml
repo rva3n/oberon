@@ -4,8 +4,9 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "g" 1.0 as G
 
-PanelWindow {
+FloatingWindow {
     id: root
+    required property var modelData
 
     property string phase: "connecting" // connecting | ready | prompt | busy | auth_error | starting | started
     property var users: []
@@ -42,18 +43,26 @@ PanelWindow {
         { action: "suspend", label: "Сон", icon: "bedtime" }
     ]
 
+    // cage реализует только xdg-shell (layer-shell в нём нет), поэтому greeter —
+    // обычное окно-топлевел: cage сам разворачивает единственного клиента.
+    title: "Oberon"
     color: G.Theme.background
-    anchors {
-        top: true
-        bottom: true
-        left: true
-        right: true
+    implicitWidth: screen ? screen.width : 1280
+    implicitHeight: screen ? screen.height : 720
+    fullscreen: true
+
+    readonly property var ruWeekdays: ["воскресенье", "понедельник", "вторник",
+        "среда", "четверг", "пятница", "суббота"]
+    readonly property var ruMonths: ["января", "февраля", "марта", "апреля", "мая",
+        "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+    // Дата по-русски без зависимости от системной локали (юзер greeter её не имеет).
+    function ruDate(value) {
+        const d = value instanceof Date ? value : new Date();
+        const weekday = ruWeekdays[d.getDay()] || "";
+        const month = ruMonths[d.getMonth()] || "";
+        const head = weekday.length ? weekday.charAt(0).toLocaleUpperCase() + weekday.slice(1) : "";
+        return head + ", " + d.getDate() + " " + month + " " + d.getFullYear();
     }
-    exclusiveZone: 0
-    focusable: true
-    WlrLayershell.namespace: "oberon-greeter"
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
     function firstLetter(value) {
         const text = String(value || "").trim();
@@ -605,7 +614,7 @@ PanelWindow {
             }
 
             G.GText {
-                text: Qt.formatDate(root.clockNow, "dddd, d MMMM yyyy")
+                text: root.ruDate(root.clockNow)
                 role: "title"
                 color: G.Theme.subtext
             }
@@ -655,7 +664,7 @@ PanelWindow {
                 NumberAnimation { duration: G.Theme.durLong; easing.type: G.Theme.easeStandard }
             }
             Behavior on scale {
-                NumberAnimation { duration: G.Theme.durEnter; easing.type: Easing.OutBack; overshoot: 0.7 }
+                NumberAnimation { duration: G.Theme.durEnter; easing.type: Easing.OutBack; easing.overshoot: 0.7 }
             }
 
             Column {
@@ -777,7 +786,7 @@ PanelWindow {
                     Repeater {
                         model: root.sessions
                         delegate: G.Button {
-                            text: modelData.label
+                            text: modelData.label || modelData.name
                             kind: "chip"
                             selected: modelData.name === root.selectedSession
                             enabled: !root.busy
