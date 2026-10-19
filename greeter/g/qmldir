@@ -1,0 +1,7 @@
+module OberonGreeter
+singleton Theme 1.0 theme.qml
+Card 1.0 Card.qml
+Button 1.0 Button.qml
+PasswordField 1.0 PasswordField.qml
+Icon 1.0 Icon.qml
+GText 1.0 GText.qml
