@@ -110,7 +110,15 @@ Singleton {
         gameGamemode: true,
         gameProtonWayland: false,
         gameProtonHdr: false,
-        gameProtonNtsync: true
+        gameProtonNtsync: true,
+        termShell: "",
+        termFontSize: 13,
+        termRows: 24,
+        termOpacity: 0.94,
+        termCursorStyle: "block",
+        termKeepAlive: true,
+        termShowChips: true,
+        islandTerminal: false
     })
 
     Process {
@@ -225,6 +233,14 @@ Singleton {
             property bool gameProtonWayland: false
             property bool gameProtonHdr: false
             property bool gameProtonNtsync: true
+            property string termShell: ""
+            property int termFontSize: 13
+            property int termRows: 24
+            property real termOpacity: 0.94
+            property string termCursorStyle: "block"
+            property bool termKeepAlive: true
+            property bool termShowChips: true
+            property bool islandTerminal: false
         }
     }
 
@@ -331,6 +347,14 @@ Singleton {
     readonly property bool gameProtonWayland: a.gameProtonWayland
     readonly property bool gameProtonHdr: a.gameProtonHdr
     readonly property bool gameProtonNtsync: a.gameProtonNtsync
+    readonly property string termShell: a.termShell
+    readonly property int termFontSize: a.termFontSize
+    readonly property int termRows: a.termRows
+    readonly property real termOpacity: a.termOpacity
+    readonly property string termCursorStyle: a.termCursorStyle
+    readonly property bool termKeepAlive: a.termKeepAlive
+    readonly property bool termShowChips: a.termShowChips
+    readonly property bool islandTerminal: a.islandTerminal
 
     // Инстанцирование ленивых синглтонов: без ссылки на них QML их не создаёт,
     // и NightLight/Sounds никогда бы не отреагировали на эти префы.

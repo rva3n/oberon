@@ -95,7 +95,7 @@ Item {
     // ── порядок чипов: islandOrder (id: kb/weather/ws/clock/tray) ──────
     // ВАЖНО: JsonAdapter отдаёт QVariantList, а не JS-Array — Array.isArray
     // для него false, поэтому копируем по length и фильтруем по типу.
-    readonly property var defaultOrder: ["kb", "weather", "ws", "clock", "tray"]
+    readonly property var defaultOrder: ["kb", "weather", "ws", "clock", "term", "tray"]
     readonly property var orderRaw: holder.orderProp
     readonly property var order: {
         const allowed = holder.defaultOrder;
@@ -368,6 +368,56 @@ Item {
         }
     }
 
+    Component { id: termChip
+        Item {
+            id: termOuter
+            visible: Prefs.islandTerminal
+            implicitWidth: Theme.dp(28)
+            implicitHeight: Theme.dp(24)
+            scale: termArea.pressed ? 0.96 : 1
+
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Theme.durFastEffects
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.curveFastSpatial
+                }
+            }
+
+            property real grow: termArea.containsMouse ? Theme.dp(4) : 0
+            Behavior on grow {
+                NumberAnimation {
+                    duration: Theme.durFastEffects
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.curveFastSpatial
+                }
+            }
+
+            Rectangle {
+                x: -termOuter.grow / 2
+                y: -termOuter.grow / 2
+                width: parent.width + termOuter.grow
+                height: parent.height + termOuter.grow
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: termArea
+                    radius: parent.radius
+                    onEntered: holder.tip(termArea, "Терминал — клик, чтобы открыть")
+                    onExited: holder.untip(termArea)
+                    onClicked: if (holder.shell) holder.shell.toggleTerminal()
+                }
+            }
+
+            Icon {
+                anchors.centerIn: parent
+                name: "terminal"
+                size: Theme.dp(15)
+                color: Theme.primary
+            }
+        }
+    }
+
     Component { id: trayChip
         // Системный трей — правый край idle-ряда (как чип). Ширину берём с
         // содержимого: на пустом трее она 0 и капсула не занимает места.
@@ -401,14 +451,17 @@ Item {
                        : chipLoader.modelData === "weather" ? Prefs.islandWeather
                        : chipLoader.modelData === "ws" ? Prefs.islandWorkspaces
                        : chipLoader.modelData === "clock" ? Prefs.islandClock
+                       : chipLoader.modelData === "term" ? Prefs.islandTerminal
                        : chipLoader.modelData === "system" ? Prefs.systemLoadOnIsland
                        : Prefs.islandTray
-                active: chipLoader.modelData !== "system" || Prefs.systemLoadOnIsland
+                active: (chipLoader.modelData !== "system" || Prefs.systemLoadOnIsland)
+                    && (chipLoader.modelData !== "term" || Prefs.islandTerminal)
                 // id Component'ов не свойства — ссылаемся напрямую по id
                 sourceComponent: chipLoader.modelData === "kb" ? kbChip
                                 : chipLoader.modelData === "weather" ? weatherChip
                                 : chipLoader.modelData === "ws" ? wsChip
                                 : chipLoader.modelData === "clock" ? clockChip
+                                : chipLoader.modelData === "term" ? termChip
                                 : chipLoader.modelData === "system" ? systemLoadChip
                                 : trayChip
             }
@@ -417,7 +470,7 @@ Item {
 
     // У боковой кромки те же источники данных складываются столбиком. Список
     // намеренно компактный: подписи длинных чипов остаются в тултипах.
-    readonly property var verticalOrder: ["media", "clock", "weather", "battery", "kb", "ws", "system", "tray"]
+    readonly property var verticalOrder: ["media", "clock", "weather", "battery", "kb", "ws", "term", "system", "tray"]
 
     Component { id: verticalMediaChip
         Item {
@@ -691,6 +744,33 @@ Item {
         }
     }
 
+    Component { id: verticalTermChip
+        Item {
+            visible: Prefs.islandTerminal
+            implicitWidth: Theme.dp(26)
+            implicitHeight: Theme.dp(24)
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusPill
+                color: Theme.bgTile
+                StateLayer {
+                    id: verticalTermArea
+                    radius: parent.radius
+                    onEntered: holder.tip(verticalTermArea, "Терминал — клик, чтобы открыть")
+                    onExited: holder.untip(verticalTermArea)
+                    onClicked: if (holder.shell) holder.shell.toggleTerminal()
+                }
+            }
+            Icon {
+                anchors.centerIn: parent
+                name: "terminal"
+                size: Theme.dp(15)
+                color: Theme.primary
+            }
+        }
+    }
+
     Component { id: verticalTrayChip
         Item {
             id: verticalTray
@@ -747,6 +827,7 @@ Item {
                     : modelData === "battery" ? holder.showBattery
                     : modelData === "kb" ? holder.showLayout
                     : modelData === "ws" ? Prefs.islandWorkspaces
+                    : modelData === "term" ? Prefs.islandTerminal
                     : modelData === "system" ? Prefs.systemLoadOnIsland
                     : Prefs.islandTray && holder.trayItems.length > 0)
                 active: chipShown
@@ -761,6 +842,7 @@ Item {
                     : modelData === "system" ? verticalSystemLoadChip
                     : modelData === "kb" ? verticalLayoutChip
                     : modelData === "ws" ? verticalWorkspaceChip
+                    : modelData === "term" ? verticalTermChip
                     : verticalTrayChip
             }
         }

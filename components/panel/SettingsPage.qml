@@ -111,6 +111,10 @@ RowLayout {
         { id: "bar", title: "Панель и остров", glyph: "widgets", page: "bar",
           sub: "Состав островка, чипы и их порядок.",
           keys: "bar island notch pill height width cpu gpu load temperature панель остров островок капсула вырез чипы нагрузка" },
+        { id: "terminal", title: "Терминал", icon: "terminal", glyph: "terminal", group: "Оболочка", page: "terminal",
+          sub: "Встроенный PTY-терминал в островке, шрифт и команды",
+          keywords: "терминал консоль pty shell fish zsh bash шрифт курсор",
+          keys: "терминал консоль pty shell fish zsh bash шрифт курсор terminal" },
         { id: "media", title: "Медиа", glyph: "music_note", page: "media",
           sub: "Вид медиапилюли и оформление текущего трека.",
           keys: "media player music cover disc звук плеер музыка обложка пластинка" },
@@ -171,7 +175,7 @@ RowLayout {
     ]
 
     readonly property var groups: [
-        { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "media", "clock"] },
+        { id: "island", title: "Остров", glyph: "widgets", pages: ["bar", "terminal", "media", "clock"] },
         { id: "appearance", title: "Оформление", glyph: "colors", pages: ["look", "weather", "motion", "night"] },
         { id: "controls", title: "Управление", glyph: "tune", pages: ["cc", "launch", "notif", "keys", "games"] },
         { id: "devices", title: "Устройства", glyph: "desktop_windows", pages: ["display", "input"] },
@@ -2845,6 +2849,102 @@ RowLayout {
                     role: "bodySmall"
                     color: page.outputsError !== "" ? Theme.error : Theme.subtextDim
                     wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: page.sectionId === "terminal"
+            Layout.fillWidth: true
+            spacing: Theme.dp(12)
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Оболочка и сессия"
+
+                SPick {
+                    label: "Командная оболочка"
+                    options: [
+                        { key: "", label: "Системная ($SHELL)" },
+                        { key: "/usr/bin/fish", label: "fish" },
+                        { key: "/usr/bin/zsh", label: "zsh" },
+                        { key: "/usr/bin/bash", label: "bash" }
+                    ]
+                    value: Prefs.termShell
+                    onPicked: (v) => Prefs.set("termShell", String(v))
+                }
+                SToggle {
+                    label: "Сохранять сессию в фоне"
+                    sub: "Не завершать PTY-вкладки при сворачивании островка"
+                    checked: Prefs.termKeepAlive
+                    onToggled: (v) => Prefs.set("termKeepAlive", v)
+                }
+                SToggle {
+                    label: "Панель быстрых команд"
+                    sub: "Показывать чипы fastfetch, git status, paru и др. над терминалом"
+                    checked: Prefs.termShowChips
+                    onToggled: (v) => Prefs.set("termShowChips", v)
+                }
+                SToggle {
+                    label: "Иконка терминала в островке"
+                    sub: "Быстрый вызов терминала из компактной капсулы"
+                    checked: Prefs.islandTerminal
+                    onToggled: (v) => Prefs.set("islandTerminal", v)
+                }
+            }
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Внешний вид терминала"
+
+                SSlider {
+                    label: "Размер шрифта"
+                    from: 10
+                    to: 20
+                    step: 1
+                    suffix: " пт"
+                    value: Prefs.termFontSize
+                    onCommitted: (v) => Prefs.set("termFontSize", Math.round(v))
+                }
+                SSlider {
+                    label: "Высота экрана (строк)"
+                    from: 14
+                    to: 38
+                    step: 2
+                    suffix: ""
+                    value: Prefs.termRows
+                    onCommitted: (v) => Prefs.set("termRows", Math.round(v))
+                }
+                SSlider {
+                    label: "Непрозрачность фона"
+                    from: 50
+                    to: 100
+                    step: 5
+                    suffix: "%"
+                    value: Math.round(Prefs.termOpacity * 100)
+                    onCommitted: (v) => Prefs.set("termOpacity", Math.round(v) / 100)
+                }
+                SPick {
+                    label: "Форма курсора"
+                    options: [
+                        { key: "block", label: "Блок █" },
+                        { key: "beam", label: "Линия ▏" },
+                        { key: "underline", label: "Подчёркивание ▁" }
+                    ]
+                    value: Prefs.termCursorStyle
+                    onPicked: (v) => Prefs.set("termCursorStyle", String(v))
+                }
+            }
+
+            SCard {
+                Layout.fillWidth: true
+                title: "Быстрый запуск"
+
+                SButton {
+                    text: "Открыть терминал в островке"
+                    icon: "terminal"
+                    variant: "tonal"
+                    onClicked: if (page.win && page.win.shell) page.win.shell.openTerminal("")
                 }
             }
         }

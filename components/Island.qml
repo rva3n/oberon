@@ -21,6 +21,7 @@ PanelWindow {
     property var shell: null
     property string view: "idle"        // idle | panel | launcher | taskman | tray
     property bool settingsKeysCapture: false
+    property alias settingsCapturingKeys: win.settingsKeysCapture
     property bool pillDragging: false
     property point pillDragCenterOffset: Qt.point(0, 0)
 
@@ -71,9 +72,9 @@ PanelWindow {
     // (components/Backdrop.qml — Top-слой), иначе клик внутри панели её закрывает.
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "oberon-island"
-    WlrLayershell.keyboardFocus: win.settingsKeysCapture ? WlrKeyboardFocus.Exclusive
-        : ((view === "launcher" || view === "panel" || view === "taskman" || view === "tray")
-            ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None)
+    WlrLayershell.keyboardFocus: win.big
+        ? ((win.settingsCapturingKeys || (win.view === "panel" && win.page === "terminal")) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand)
+        : WlrKeyboardFocus.None
     mask: Region {
         item: pill
         radius: pill.radius
@@ -105,6 +106,7 @@ PanelWindow {
         updates: "l",
         media: "xl",
         files: "xl",
+        terminal: "xl",
         vault: "m",
         calendar: "m",
         weather: "m",
@@ -610,6 +612,7 @@ PanelWindow {
                 UpdatesPage { win: win }
                 FilesView { win: win }
                 VaultView { win: win }
+                TerminalView { id: terminalPage; win: win }
 
                 TaskManager { visible: win.mode === "taskman"; shell: win.shell; initialTab: win.shell ? win.shell.taskmanTab : 0 }
 
@@ -698,7 +701,8 @@ PanelWindow {
         record: "Запись",
         media: "Медиа",
         files: "Файлы",
-        vault: "Пароли"
+        vault: "Пароли",
+        terminal: "Терминал"
     })
     readonly property string pageTitle: pageTitles[page] || ""
 

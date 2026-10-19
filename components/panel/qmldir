@@ -16,3 +16,4 @@ KeybindsPage 1.0 KeybindsPage.qml
 MediaView 1.0 MediaView.qml
 FilesView 1.0 FilesView.qml
 VaultView 1.0 VaultView.qml
+TerminalView 1.0 TerminalView.qml

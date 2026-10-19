@@ -16,6 +16,8 @@ ShellRoot {
     property string panelPage: ""
     property string mediaPath: ""
     property string filesStartPath: ""
+    property string terminalCwd: ""
+    signal terminalCdRequested(string path)
     property string settingsSection: "look"
     property bool widgetsEditing: false
     property string launcherTab: "apps"    // apps | clipboard | emoji | packages (вкладки лончера)
@@ -234,6 +236,19 @@ ShellRoot {
         root.openFiles(root.parentDirOf(root.mediaPath));
     }
     function openVault() { root.view = "panel"; root.panelPage = "vault"; }
+    function openTerminal(path) {
+        const raw = String(path || "");
+        root.terminalCwd = raw === "" ? "" : root.expandLocalPath(raw);
+        root.view = "panel";
+        root.panelPage = "terminal";
+        root.terminalCdRequested(root.terminalCwd);
+    }
+    function toggleTerminal() {
+        if (root.view === "panel" && root.panelPage === "terminal")
+            root.closeOverlays();
+        else
+            root.openTerminal("");
+    }
     function togglePanel()    { if (root.view === "panel") { root.view = "idle"; root.panelPage = ""; } else { root.openPanel(); } }
     function toggleLauncher() { if (root.view === "launcher") { root.view = "idle"; } else { root.openLauncher(root.launcherTab); } }
     function taskman()        { if (root.view === "taskman") { root.view = "idle"; } else { root.view = "taskman"; root.panelPage = ""; } }
@@ -337,12 +352,14 @@ ShellRoot {
         function page(name: string) {
             if (["wifi", "bluetooth", "volume", "brightness", "power", "wallpapers",
                  "clipboard", "weather", "system", "calendar", "timers", "emoji",
-                 "games", "updates", "settings", "record", "media", "files", "vault"]
+                 "games", "updates", "settings", "record", "media", "files", "vault", "terminal"]
                     .indexOf(name) < 0)
                 return;
             root.view = "panel";
             root.panelPage = name;
         }
+        function terminal(): void { root.toggleTerminal(); }
+        function terminalAt(path: string): void { root.openTerminal(path); }
         function pageRoot() { root.view = "panel"; root.panelPage = ""; }
         function pageWifi() { root.view = "panel"; root.panelPage = "wifi"; }
         function pageBluetooth() { root.view = "panel"; root.panelPage = "bluetooth"; }

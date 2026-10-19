@@ -1319,6 +1319,12 @@ ColumnLayout {
             disabled: listProc.running
             onClicked: page.refreshAll()
         }
+        IconButton {
+            size: "xs"
+            icon: "terminal"
+            tooltip: "Открыть текущую папку в терминале островка"
+            onClicked: if (page.win && page.win.shell) page.win.shell.openTerminal(page.currentPath)
+        }
         Button {
             text: "Новая папка"
             icon: "folder"
@@ -1415,6 +1421,18 @@ ColumnLayout {
                 size: "xs"
                 variant: "text"
                 onClicked: page.copySelectedPath()
+            }
+            Button {
+                text: "Открыть папку в терминале"
+                icon: "terminal"
+                size: "xs"
+                variant: "text"
+                onClicked: {
+                    const targetDir = (page.selectedEntry && page.selectedEntry.dir) ? page.selectedEntry.path : page.currentPath;
+                    page.menuOpen = false;
+                    if (page.win && page.win.shell)
+                        page.win.shell.openTerminal(targetDir);
+                }
             }
             Button {
                 visible: page.selectedEntry !== null && !page.selectedEntry.dir
