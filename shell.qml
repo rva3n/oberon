@@ -110,6 +110,12 @@ ShellRoot {
         model: Quickshell.screens
         delegate: Backdrop { shell: root; active: root.view !== "idle" }
     }
+    // Невидимая распорка под остров: резервирует полосу, чтобы окна не
+    // заезжали под капсулу (сам остров зону не держит из-за бага Umbriel).
+    Variants {
+        model: Quickshell.screens
+        delegate: Strut { modelData: modelData }
+    }
     Variants {
         model: Quickshell.screens
         delegate: Island { shell: root; view: root.view }

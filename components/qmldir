@@ -18,3 +18,4 @@ TabBtn 1.0 TabBtn.qml
 WidgetLayer 1.0 WidgetLayer.qml
 NotchCorner 1.0 NotchCorner.qml
 NotchShape 1.0 NotchShape.qml
+Strut 1.0 Strut.qml
